@@ -1,0 +1,57 @@
+name: publish npm packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact synchronized version already committed on main (for example 0.1.1)
+        required: true
+        type: string
+      npm_tag:
+        description: npm distribution tag
+        required: true
+        default: latest
+        type: choice
+        options:
+          - latest
+          - next
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: bridgecrux-npm-publish
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require the main branch
+        run: test "$GITHUB_REF" = "refs/heads/main"
+
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
+
+      - name: Install exact dependencies
+        run: npm ci
+
+      - name: Verify synchronized release metadata
+        run: npm run release:verify -- "$RELEASE_VERSION"
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+
+      - name: Build and run the complete release gate
+        run: npm run build
+
+      - name: Publish in dependency order through npm OIDC
+        run: npm run release:publish -- "$RELEASE_VERSION" "$NPM_TAG"
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+          NPM_TAG: ${{ inputs.npm_tag }}

@@ -1,69 +1,134 @@
-# Releasing BridgeCrux
+# BridgeCrux Publishing Handoff
 
-## Release Identity
+This is the source of truth for the Codex instance or human acting as the
+BridgeCrux release operator. Framework-development agents should improve and
+validate the framework, but must not publish, change npm access, or create a
+release unless the user explicitly assigns them the release-operator role.
+
+## Current Release State
+
+As of 2026-07-15:
 
 - npm organization and scope: `bridge-crux` / `@bridge-crux`
-- release team: `bridge-crux:bridgecrux`
-- current npm owner and team member: `bridgecrux`
-- source repository: `https://github.com/LycurgusxLycurgus/bridgecrux-system`
-- synchronized initial version: `0.1.0`
+- dedicated npm release team: `bridge-crux:bridgecrux`
+- npm account currently in both release-capable teams: `bridgecrux`
+- GitHub owner and repository: `LycurgusxLycurgus/bridgecrux-system`
+- default branch: `main`
+- all six public packages: published at synchronized version `0.1.0`
+- dedicated `bridgecrux` team access: read/write on all six packages
+- default `developers` team access: also read/write on all six packages
+- clean consumer installation: confirmed by the repository owner
+- trusted publisher: workflow implemented; npm package connections still need
+  to be saved once per package and proven by the next real release
 
-The npm organization owns package names. The npm team controls who may publish them. The GitHub account and repository may use different names without affecting the npm scope.
+The npm organization owns the package names. The dedicated npm team controls
+human access. GitHub Actions publishes through short-lived npm OIDC credentials;
+there is no `NPM_TOKEN` repository secret.
 
-## First Publication
+Before changing the release mechanism, re-check npm's current
+[trusted publishing documentation](https://docs.npmjs.com/trusted-publishers/).
+The contract is external and may evolve independently of this repository.
 
-Run from a clean `main` checkout after the release commit is pushed:
+## One-Time Trusted Publisher Setup
+
+First commit and push `.github/workflows/publish.yml` to `main`. npm requires the
+configured workflow file to exist in the GitHub repository.
+
+On npmjs.com, repeat the following for each package:
+
+- `@bridge-crux/core`
+- `@bridge-crux/content`
+- `@bridge-crux/convex`
+- `@bridge-crux/adapters`
+- `@bridge-crux/kit`
+- `@bridge-crux/skills`
+
+Open **Package settings → Trusted Publisher → GitHub Actions** and enter exactly:
+
+| Field | Value |
+| --- | --- |
+| Organization or user | `LycurgusxLycurgus` |
+| Repository | `bridgecrux-system` |
+| Workflow filename | `publish.yml` |
+| Environment name | leave blank |
+| Allowed actions | `npm publish` only |
+
+Enter only `publish.yml`, not `.github/workflows/publish.yml`. Field values are
+case-sensitive. Each npm package has its own setting, so saving one package does
+not configure the other five.
+
+Leave **Publishing access** on its current token-compatible setting until one
+real version has successfully published through the workflow. npm does not test
+the connection when the form is saved. After the first successful OIDC release,
+select **Require two-factor authentication and disallow tokens** on all six
+packages and revoke any obsolete npm automation tokens.
+
+## Preparing A Release In The Repository
+
+Start from a clean, current `main` checkout. Read `docs/stability.md`, the changes
+since the previous release, and the current npm versions. Choose one semantic
+version for all six packages; BridgeCrux `0.1.x` does not release workspaces at
+independent versions.
 
 ```bash
-npm whoami
+git switch main
+git pull --ff-only
+git status --short
 npm ci
+npm run release:version -- 0.1.1
+npm run release:verify -- 0.1.1
 npm run build
+git diff --check
+git diff
 ```
 
-The authenticated user must be an owner or member of `bridge-crux` with permission to create packages. All six workspaces must remain on the same version.
+Replace `0.1.1` with the intended exact version. `release:version` updates the
+root manifest, all six workspace manifests, all internal BridgeCrux dependency
+versions, and `package-lock.json`. It does not commit, tag, push, or publish.
 
-Review npm's exact package payloads:
+Review every changed file. The release commit should contain only the intended
+framework changes, release metadata, and operator documentation. Then commit and
+push the release state to `main` using the repository's normal reviewed GitHub
+flow.
+
+## Publishing Through GitHub Actions
+
+1. Open the GitHub repository.
+2. Select **Actions → publish npm packages → Run workflow**.
+3. Select branch `main`.
+4. Enter the exact committed version.
+5. Use npm tag `latest` for a normal stable release or `next` for a prerelease.
+6. Run the workflow and inspect every step before treating the release as done.
+
+The workflow uses Node 24 on a GitHub-hosted runner, requests `id-token: write`,
+installs from the lockfile without a release cache, verifies package identity and
+version synchronization, runs the complete build/conformance gate, and publishes
+in dependency order:
+
+```text
+core → content → convex → adapters → kit → skills
+```
+
+The publish script checks npm before each package. If a run fails after publishing
+only part of the set, repair the cause and rerun the same version: already-existing
+packages are skipped and the remaining packages continue. Never increment the
+version merely to conceal a partial release.
+
+## Post-Publish Verification
+
+Verify registry versions and dedicated team access:
 
 ```bash
-npm publish --dry-run --workspace @bridge-crux/core
-npm publish --dry-run --workspace @bridge-crux/content
-npm publish --dry-run --workspace @bridge-crux/convex
-npm publish --dry-run --workspace @bridge-crux/adapters
-npm publish --dry-run --workspace @bridge-crux/kit
-npm publish --dry-run --workspace @bridge-crux/skills
+npm view @bridge-crux/core version
+npm view @bridge-crux/content version
+npm view @bridge-crux/convex version
+npm view @bridge-crux/adapters version
+npm view @bridge-crux/kit version
+npm view @bridge-crux/skills version
+npm access list packages bridge-crux:bridgecrux --json
 ```
 
-Publish in dependency order:
-
-```bash
-npm publish --workspace @bridge-crux/core
-npm publish --workspace @bridge-crux/content
-npm publish --workspace @bridge-crux/convex
-npm publish --workspace @bridge-crux/adapters
-npm publish --workspace @bridge-crux/kit
-npm publish --workspace @bridge-crux/skills
-```
-
-Each package declares `publishConfig.access: public`. Publication is irreversible for a given name and version; never publish from an uncommitted or unvalidated worktree.
-
-## Team Access
-
-After the packages exist, give the dedicated team read/write access:
-
-```bash
-npm access grant read-write bridge-crux:bridgecrux @bridge-crux/core
-npm access grant read-write bridge-crux:bridgecrux @bridge-crux/content
-npm access grant read-write bridge-crux:bridgecrux @bridge-crux/convex
-npm access grant read-write bridge-crux:bridgecrux @bridge-crux/adapters
-npm access grant read-write bridge-crux:bridgecrux @bridge-crux/kit
-npm access grant read-write bridge-crux:bridgecrux @bridge-crux/skills
-```
-
-The npm-generated `developers` team receives access to new organization packages by default. Review that team after granting the dedicated team and reduce its package access if releases should be restricted to `bridgecrux`.
-
-## Consumer Verification
-
-In a fresh external directory:
+In a fresh directory outside this repository, verify the public consumer path:
 
 ```bash
 npm init -y
@@ -72,9 +137,45 @@ npx @bridge-crux/skills install --target <agent-skill-root> --project .
 npx bridgecrux doctor --project .
 ```
 
-Verify that the project receives the three skills and one managed BridgeCrux block in its selected instruction files.
+Confirm all three skills and one bounded BridgeCrux instruction block were
+installed. For an OIDC release from this public GitHub repository, also confirm
+the npm package pages show provenance for the new version.
 
-## Later Releases
+Only after all six versions, the consumer path, and provenance are correct should
+the release operator create or push the matching Git tag and GitHub Release if the
+project is using them. Record any release-specific limitation before handing the
+repository back to framework development.
 
-After the first packages exist, configure npm Trusted Publishing for each package against the GitHub repository and a reviewed release workflow. Continue publishing all public packages at one synchronized version until the stability policy explicitly permits independent versioning.
+## Access Tightening And Recovery
 
+The npm-generated `developers` team currently duplicates the dedicated team's
+read/write access. This is not a release blocker. If package publishing should be
+restricted to `bridge-crux:bridgecrux`, revoke `bridge-crux:developers` from each
+package only after confirming the dedicated team still has read/write access.
+New organization packages may grant the default team access again and must be
+reviewed individually.
+
+OIDC troubleshooting order:
+
+1. Confirm the run is on `main` and a GitHub-hosted runner.
+2. Confirm npm's owner, repository, and `publish.yml` values match exactly.
+3. Confirm the package `repository.url` still points to
+   `LycurgusxLycurgus/bridgecrux-system`.
+4. Confirm the workflow retains `permissions: id-token: write`.
+5. Confirm Node is at least 22.14 and npm CLI is at least 11.5.1.
+6. Do not add an `NPM_TOKEN` to work around a failed trusted-publisher claim;
+   repair the mismatch and rerun the same version.
+
+## Release Completion Contract
+
+A release is complete only when all of these are true:
+
+- the release commit is on `main` and the worktree is clean;
+- the complete repository build passed for the exact committed version;
+- all six packages expose that version under the intended npm tag;
+- the `bridge-crux:bridgecrux` team retains read/write access;
+- a fresh consumer can install the kit and skills and run the doctor command;
+- an OIDC release shows npm provenance;
+- after OIDC has been proven, traditional publish tokens are disallowed;
+- the operator reports the commit, version, npm tag, workflow result, consumer
+  result, provenance result, and any remaining limitation.
