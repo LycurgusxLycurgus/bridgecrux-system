@@ -1,0 +1,22 @@
+{
+  "name": "@bridge-crux/adapters",
+  "version": "0.1.0",
+  "description": "Gemini model and Telegram channel adapters for BridgeCrux",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LycurgusxLycurgus/bridgecrux-system.git",
+    "directory": "packages/adapters"
+  },
+  "homepage": "https://github.com/LycurgusxLycurgus/bridgecrux-system#readme",
+  "bugs": { "url": "https://github.com/LycurgusxLycurgus/bridgecrux-system/issues" },
+  "engines": { "node": ">=22.0.0" },
+  "publishConfig": { "access": "public" },
+  "sideEffects": false,
+  "files": ["dist"],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
+  "dependencies": { "@bridge-crux/core": "0.1.0", "@google/genai": "2.11.0" }
+}

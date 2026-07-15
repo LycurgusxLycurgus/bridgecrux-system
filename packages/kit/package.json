@@ -1,0 +1,46 @@
+{
+  "name": "@bridge-crux/kit",
+  "version": "0.1.0",
+  "description": "BridgeCrux runtime umbrella package and CLI",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LycurgusxLycurgus/bridgecrux-system.git",
+    "directory": "packages/kit"
+  },
+  "homepage": "https://github.com/LycurgusxLycurgus/bridgecrux-system#readme",
+  "bugs": {
+    "url": "https://github.com/LycurgusxLycurgus/bridgecrux-system/issues"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "bridgecrux": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@bridge-crux/adapters": "0.1.0",
+    "@bridge-crux/content": "0.1.0",
+    "@bridge-crux/convex": "0.1.0",
+    "@bridge-crux/core": "0.1.0"
+  },
+  "peerDependencies": {
+    "convex": ">=1.42.2 <2.0.0"
+  }
+}

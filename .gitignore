@@ -8,6 +8,10 @@ node_modules/
 dist/
 build/
 coverage/
+.tsbuildinfo
+*.tsbuildinfo
+packages/skills/bundled-skills/
+conformance/fixtures/valid-crux/generated/
 .cache/
 tmp/
 temp/
@@ -39,3 +43,9 @@ venv/
 # Local databases
 *.sqlite
 *.sqlite3
+
+# Bridgecode
+bridgecode/
+Agents.md
+
+docs/standardized-repo-handoff.md

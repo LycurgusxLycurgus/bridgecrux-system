@@ -1,0 +1,40 @@
+{
+  "name": "@bridge-crux/skills",
+  "version": "0.1.0",
+  "description": "BridgeCrux Agent Skills installer and managed instruction registration",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LycurgusxLycurgus/bridgecrux-system.git",
+    "directory": "packages/skills"
+  },
+  "homepage": "https://github.com/LycurgusxLycurgus/bridgecrux-system#readme",
+  "bugs": {
+    "url": "https://github.com/LycurgusxLycurgus/bridgecrux-system/issues"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "bundled-skills"
+  ],
+  "bin": {
+    "bridgecrux-skills": "dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "prepack": "node ../../scripts/sync-skills.mjs"
+  }
+}

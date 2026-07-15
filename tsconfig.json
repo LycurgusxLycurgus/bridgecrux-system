@@ -1,0 +1,11 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/content" },
+    { "path": "packages/convex" },
+    { "path": "packages/adapters" },
+    { "path": "packages/kit" },
+    { "path": "packages/skills" }
+  ]
+}

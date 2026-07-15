@@ -1,0 +1,40 @@
+{
+  "name": "@bridge-crux/content",
+  "version": "0.1.0",
+  "description": "BridgeCrux canonical markdown discovery, validation, and generation",
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LycurgusxLycurgus/bridgecrux-system.git",
+    "directory": "packages/content"
+  },
+  "homepage": "https://github.com/LycurgusxLycurgus/bridgecrux-system#readme",
+  "bugs": {
+    "url": "https://github.com/LycurgusxLycurgus/bridgecrux-system/issues"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "bridgecrux-content": "dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "yaml": "2.9.0"
+  }
+}

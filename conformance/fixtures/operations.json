@@ -1,0 +1,7 @@
+{
+  "operations": [
+    "records.inspect",
+    "records.complete",
+    "process.advance"
+  ]
+}

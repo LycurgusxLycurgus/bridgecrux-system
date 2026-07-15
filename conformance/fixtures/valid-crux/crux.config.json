@@ -1,0 +1,37 @@
+{
+  "id": "neutral-conformance",
+  "version": "0.1.0",
+  "locale": "en",
+  "routeRegistry": ["records", "conversation"],
+  "intentRegistry": {
+    "records": ["inspect", "complete"],
+    "conversation": ["unsupported_execution"]
+  },
+  "capabilityGapEligibleRoutes": ["conversation"],
+  "conversationWindow": 12,
+  "models": {
+    "router": {
+      "provider": "test",
+      "model": "structured-test",
+      "thinking": "low",
+      "temperature": 0.2
+    },
+    "tutor": {
+      "provider": "test",
+      "model": "tutor-test",
+      "thinking": "high"
+    }
+  },
+  "channels": ["test"],
+  "memory": {
+    "reviewEveryInboundTurns": 30,
+    "reviewAtMilestones": true
+  },
+  "capabilityGaps": {
+    "minimumConfidence": 0.75,
+    "enabled": true
+  },
+  "feedback": {
+    "enabled": false
+  }
+}

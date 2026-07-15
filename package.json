@@ -1,0 +1,42 @@
+{
+  "name": "bridgecrux",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/LycurgusxLycurgus/bridgecrux-system.git"
+  },
+  "homepage": "https://github.com/LycurgusxLycurgus/bridgecrux-system#readme",
+  "bugs": {
+    "url": "https://github.com/LycurgusxLycurgus/bridgecrux-system/issues"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "sync:skills": "node scripts/sync-skills.mjs",
+    "compile": "npm run sync:skills && tsc -b",
+    "typecheck": "tsc -b --pretty false && tsc -p tsconfig.test.json --pretty false",
+    "content:build": "node packages/content/dist/cli.js build conformance/fixtures/valid-crux --operations conformance/fixtures/operations.json",
+    "lint": "eslint \"packages/**/*.ts\" \"conformance/**/*.ts\"",
+    "test": "vitest run",
+    "test:live": "vitest run --config vitest.live.config.ts",
+    "conformance": "vitest run conformance/test",
+    "pack:test": "vitest run conformance/test/installation.test.ts",
+    "doctor": "node packages/kit/dist/cli.js doctor",
+    "build": "npm run clean && npm run compile && npm run typecheck && npm run content:build && npm run lint && npm run test"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "eslint": "10.7.0",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.64.0",
+    "vitest": "4.1.10"
+  }
+}

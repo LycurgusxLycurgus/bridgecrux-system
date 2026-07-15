@@ -1,0 +1,4 @@
+interface:
+  display_name: "Use BridgeCrux Primitives"
+  short_description: "Integrate BridgeCrux into agentic applications"
+  default_prompt: "Use $use-bridgecrux-primitives to integrate BridgeCrux runtime primitives and coordinate the route and prompt skills for this application."

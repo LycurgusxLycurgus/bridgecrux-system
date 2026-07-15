@@ -1,0 +1,4 @@
+interface:
+  display_name: "Write Crux Prompts"
+  short_description: "Author the canonical BridgeCrux prompt package"
+  default_prompt: "Use $write-crux-prompts to create or revise this crux's system prompt, assistant task-signal router, and specific-function content from the real application surface."
