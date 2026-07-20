@@ -14,6 +14,8 @@ describe("clean-project package installation", () => {
     "packs and installs all public packages without publishing",
     async () => {
       const root = resolve(".");
+      const rootManifest = JSON.parse(await readFile(join(root, "package.json"), "utf8")) as { version: string };
+      const releaseVersion = rootManifest.version;
       const temporary = await mkdtemp(join(tmpdir(), "bridgecrux-installation-"));
       const tarballs = join(temporary, "tarballs");
       const project = join(temporary, "consumer");
@@ -25,7 +27,7 @@ describe("clean-project package installation", () => {
       }
       const packed = await Promise.all(
         packages.map(async (name) => {
-          const expected = join(tarballs, `bridge-crux-${name}-0.1.0.tgz`);
+          const expected = join(tarballs, `bridge-crux-${name}-${releaseVersion}.tgz`);
           expect((await stat(expected)).isFile()).toBe(true);
           return expected;
         }),
@@ -44,7 +46,7 @@ describe("clean-project package installation", () => {
         import { installBridgeCruxSkills } from "@bridge-crux/skills";
         import { readFile } from "node:fs/promises";
         import { join } from "node:path";
-        if (BRIDGECRUX_VERSION !== "0.1.0") throw new Error("version mismatch");
+        if (BRIDGECRUX_VERSION !== ${JSON.stringify(releaseVersion)}) throw new Error("version mismatch");
         if (typeof DefaultRouterDecisionValidator !== "function") throw new Error("core export missing");
         if (!bridgeCruxTableNames.includes("bridgecruxRouterDecisions")) throw new Error("Convex tables missing");
         const target = join(process.cwd(), ".skills");
@@ -59,7 +61,7 @@ describe("clean-project package installation", () => {
 
       const cli = join(project, "node_modules", "@bridge-crux", "kit", "dist", "cli.js");
       const cliResult = await execute(process.execPath, [cli, "--version"], { cwd: project, timeout: 30_000, windowsHide: true });
-      expect(cliResult.stdout.trim()).toBe("0.1.0");
+      expect(cliResult.stdout.trim()).toBe(releaseVersion);
       for (const name of ["bridgecrux", "bridgecrux-content", "bridgecrux-skills"]) {
         const executable = join(project, "node_modules", ".bin", process.platform === "win32" ? `${name}.cmd` : name);
         expect((await stat(executable)).isFile(), `${name} executable`).toBe(true);

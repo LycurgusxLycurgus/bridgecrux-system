@@ -7,7 +7,7 @@ release unless the user explicitly assigns them the release-operator role.
 
 ## Current Release State
 
-As of 2026-07-15:
+As of 2026-07-20:
 
 - npm organization and scope: `bridge-crux` / `@bridge-crux`
 - dedicated npm release team: `bridge-crux:bridgecrux`
@@ -18,8 +18,9 @@ As of 2026-07-15:
 - dedicated `bridgecrux` team access: read/write on all six packages
 - default `developers` team access: also read/write on all six packages
 - clean consumer installation: confirmed by the repository owner
-- trusted publisher: workflow implemented; npm package connections still need
-  to be saved once per package and proven by the next real release
+- trusted publisher: workflow and all six npm package connections are configured
+  according to the repository owner; the next real release must prove OIDC and
+  provenance end to end
 
 The npm organization owns the package names. The dedicated npm team controls
 human access. GitHub Actions publishes through short-lived npm OIDC credentials;
@@ -29,7 +30,10 @@ Before changing the release mechanism, re-check npm's current
 [trusted publishing documentation](https://docs.npmjs.com/trusted-publishers/).
 The contract is external and may evolve independently of this repository.
 
-## One-Time Trusted Publisher Setup
+## One-Time Trusted Publisher Setup Reference
+
+The repository owner reports this setup complete for the current six packages.
+Use this section only to audit the configuration, recover it, or add a package.
 
 First commit and push `.github/workflows/publish.yml` to `main`. npm requires the
 configured workflow file to exist in the GitHub repository.

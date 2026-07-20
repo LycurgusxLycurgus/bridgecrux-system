@@ -230,6 +230,12 @@ describe("whole-turn conformance", () => {
     expect(auditDecisions.map((audit) => audit.phase)).toEqual(["raw", "validated"]);
     expect(ledger).toHaveLength(1);
     expect(send).toHaveBeenCalledTimes(1);
+    expect(modelCalls).toEqual([
+      expect.objectContaining({ config: expect.objectContaining({ thinkingConfig: { thinkingLevel: "HIGH" } }) }),
+      expect.objectContaining({ config: expect.objectContaining({ thinkingConfig: { thinkingLevel: "HIGH" } }) }),
+    ]);
+    const deliveryBody = JSON.parse(String((send.mock.calls[0]?.[1] as RequestInit | undefined)?.body)) as Record<string, unknown>;
+    expect(deliveryBody).toMatchObject({ parse_mode: "HTML", text: "Record Alpha is complete and the evidence is saved." });
     expect(operationExecutions).toBe(1);
     expect(duplicate.status).toBe("duplicate");
     expect(await reports.listOpen()).toEqual([]);

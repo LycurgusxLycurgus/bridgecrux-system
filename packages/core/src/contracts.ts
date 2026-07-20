@@ -126,7 +126,11 @@ export type RuntimeSession = {
   modelContinuityId?: string;
 };
 
-export type UserCopySource = "authored_deterministic" | "high_thinking_tutor" | "safe_fallback";
+export type UserCopySource =
+  | "authored_deterministic"
+  | "conversational_tutor"
+  | "high_thinking_tutor"
+  | "safe_fallback";
 
 export type RuntimeMessage = {
   id: string;
@@ -513,18 +517,18 @@ export type DeterministicProcessController = {
 
 export type StructuredModelRequest<T> = {
   purpose: "router" | "memory" | "assessment";
-  model: string;
+  model?: string;
   prompt: string;
   input: unknown;
   schema: JsonValue;
   correlationId: string;
   temperature?: number;
-  thinkingLevel?: "low" | "high";
+  thinkingLevel?: ModelThinkingLevel;
   parse(value: unknown): T;
 };
 
 export type TutorModelRequest = {
-  model: string;
+  model?: string;
   systemPrompt: string;
   userMessage: string;
   recentMessages: RuntimeMessage[];
@@ -532,8 +536,10 @@ export type TutorModelRequest = {
   operationResults: OperationResult[];
   allowedContext: Record<string, unknown>;
   correlationId: string;
-  thinkingLevel?: "high";
+  thinkingLevel?: "medium" | "high";
 };
+
+export type ModelThinkingLevel = "minimal" | "low" | "medium" | "high";
 
 export type ToolDefinition = {
   id: string;

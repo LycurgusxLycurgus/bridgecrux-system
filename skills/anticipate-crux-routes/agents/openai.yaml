@@ -1,4 +1,4 @@
 interface:
   display_name: "Anticipate Crux Routes"
-  short_description: "Build and verify complete crux route coverage"
-  default_prompt: "Use $anticipate-crux-routes to build or update this crux's route implementation checklist and close missing backend-agent paths."
+  short_description: "Simulate and audit complete crux route coverage"
+  default_prompt: "Use $anticipate-crux-routes to audit this crux for missing, duplicate, or contradictory routes and maintain one all-route simulation."

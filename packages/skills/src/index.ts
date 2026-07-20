@@ -20,12 +20,12 @@ BridgeCrux is the crux operating layer for this agentic application. For any wor
 Installed capabilities:
 
 - \`$use-bridgecrux-primitives\` is the mandatory coordinator for integrating, composing, auditing, testing, and repairing BridgeCrux runtime behavior. It preserves the authority chain from normalized inbound state through validated routing, declared operations, persistence, truthful copy, delivery, and audit.
-- \`$anticipate-crux-routes\` derives and maintains the application task surface, route implementation checklist, handler/operation coverage, and typed gap dispositions. Use it when the task surface is new, changing, incomplete, or under audit.
+- \`$anticipate-crux-routes\` derives and maintains the application task surface, route implementation checklist, one all-route simulation, duplicate/contradiction audit, handler/operation coverage, and typed gap dispositions. Use it when the task surface is new, changing, incomplete, or under audit.
 - \`$write-crux-prompts\` creates or revises the canonical \`system.prompt.md\`, \`assistants.md\`, specific-function, and deterministic-process content from verified application behavior. Use it whenever canonical crux instructions change.
 - \`@bridge-crux/kit\` exposes the provider-neutral core, canonical content builder, Convex persistence primitives, Gemini model adapter, Telegram channel adapter, and the \`bridgecrux build|validate|doctor\` CLI.
 - \`@bridge-crux/skills\` installs these three skills and maintains this bounded instruction block.
 
-For a new crux or product-surface change, run the skills in this order: \`$anticipate-crux-routes\`, \`$write-crux-prompts\`, then \`$use-bridgecrux-primitives\` for runtime integration and whole-turn validation. For a stable runtime defect with correct routes and content, use \`$use-bridgecrux-primitives\` directly. Do not substitute prompt text for missing software, and do not let raw model output authorize mutations or replace durable application truth.
+For a new crux or product-surface change, run the skills in this order: \`$anticipate-crux-routes\`, \`$write-crux-prompts\`, then \`$use-bridgecrux-primitives\` for runtime integration and whole-turn validation. Use \`gemini-3.1-flash-lite\` by default: high thinking for agentic behavior, medium thinking only for declared knowledge-only chat with no tools, and authored copy without a model call for stable deterministic surfaces. Render Telegram copy through its adapter. For a stable runtime defect with correct routes and content, use \`$use-bridgecrux-primitives\` directly. Do not substitute prompt text for missing software, and do not let raw model output authorize mutations or replace durable application truth.
 ${MANAGED_BLOCK_END}`;
 
 export type InstructionFileMode = "auto" | "agents" | "claude" | "both" | "none";

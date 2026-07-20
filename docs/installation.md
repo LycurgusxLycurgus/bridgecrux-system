@@ -10,7 +10,23 @@ Install the complete supported runtime:
 npm install @bridge-crux/kit convex
 ```
 
-Install the three Agent Skills into an explicit skills root and register them in the application instructions:
+For one application, install the three Agent Skills inside the project and
+register them in the application instructions:
+
+```bash
+npx @bridge-crux/skills install \
+  --target ./.codex/skills \
+  --project . \
+  --instruction-files auto
+```
+
+This produces `.codex/skills/anticipate-crux-routes`,
+`.codex/skills/write-crux-prompts`, and
+`.codex/skills/use-bridgecrux-primitives` in the repository. It does not write
+to `$CODEX_HOME` and keeps application-specific BridgeCrux instructions local.
+
+Use the global Codex skills root only when the same installation should be
+available to every repository for the current user:
 
 ```bash
 npx @bridge-crux/skills install \
@@ -24,7 +40,7 @@ npx @bridge-crux/skills install \
 Uninstall only the three named skill directories and their managed blocks:
 
 ```bash
-npx @bridge-crux/skills uninstall --target "$CODEX_HOME/skills" --project .
+npx @bridge-crux/skills uninstall --target ./.codex/skills --project .
 ```
 
 The managed block requires `$use-bridgecrux-primitives` for all agentic-app crux functionality and describes when it coordinates `$anticipate-crux-routes` and `$write-crux-prompts`.
@@ -50,9 +66,34 @@ Convex actions do not own database access. Call thin application mutations and q
 
 ## Configure Adapters
 
-Gemini requires `GEMINI_API_KEY`. Model names remain application configuration; instantiate `GeminiModelClient` and `GeminiTaskSignalRouter` with the selected router and tutor models.
+Gemini requires `GEMINI_API_KEY`. New integrations default to the stable
+`gemini-3.1-flash-lite` identifier. `GeminiModelClient` supports the model's
+`minimal`, `low`, `medium`, and `high` thinking levels, but BridgeCrux runtime
+policy is intentionally narrower:
 
-Telegram requires `TELEGRAM_BOT_TOKEN`. `TelegramChannelAdapter` normalizes webhook updates, applies configured command aliases, splits output, retries transient delivery failures, and returns provider message ids. It does not interpret domain intent.
+- routing, extraction, ambiguity, partial mutations, tool use, personalized
+  interpretation, and every other agentic path use `high`;
+- an explicitly configured knowledge-only chat route may use `medium` only when
+  it has no tools, no mutation, and no active process or specific function;
+- stable deterministic-process surfaces use authored copy and make no model call.
+
+Configure knowledge-only routes through
+`DefaultTurnController`'s `tutor.knowledgeOnlyChatRoutes`. The router's
+`needsHighThinking` output may request escalation, but cannot downgrade runtime
+policy. Override `GEMINI_DEFAULT_MODEL` only when an application has an explicit
+model requirement.
+
+Current upstream references: [Gemini 3.1 Flash-Lite](https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite)
+and [Gemini thinking levels](https://ai.google.dev/gemini-api/docs/gemini-3).
+
+Telegram requires `TELEGRAM_BOT_TOKEN`. `TelegramChannelAdapter` normalizes
+webhook updates, applies configured command aliases, converts ordinary Markdown
+to Telegram-safe HTML, splits output, retries transient delivery failures, and
+returns provider message ids. HTML formatting is the default; pass
+`formatting: "plain"` only for deliberately unformatted text. The adapter does
+not interpret domain intent.
+
+See Telegram's current [sendMessage and formatting contract](https://core.telegram.org/bots/api#sendmessage).
 
 Do not store credentials in canonical crux content, reports, or checked-in environment files. `bridgecrux doctor` reports only credential presence.
 

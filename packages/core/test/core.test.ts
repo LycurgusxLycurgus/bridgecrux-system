@@ -19,6 +19,7 @@ import {
   RouteIntentRegistry,
   VALIDATION_CODES,
   auditHandlerBindings,
+  resolveTurnThinkingLevel,
   type CruxOperation,
   type CruxStateBundle,
   type HandlerBinding,
@@ -411,6 +412,38 @@ describe("reports, repair, and feedback privacy", () => {
     expect(body).toContain("secret=[redacted]");
     expect(body).not.toContain("provider-value");
     expect(body).not.toContain("private-value");
+  });
+});
+
+describe("turn thinking policy", () => {
+  it("keeps agentic work high and permits medium only for explicit knowledge-only chat", () => {
+    const validator = new DefaultRouterDecisionValidator();
+    const chat = validator.validate({ decision: raw({ needsHighThinking: false }), context: validationContext() });
+    expect(
+      resolveTurnThinkingLevel({
+        decision: chat,
+        state: {},
+        operationResults: [],
+        knowledgeOnlyChatRoutes: ["records"],
+      }),
+    ).toBe("medium");
+
+    expect(
+      resolveTurnThinkingLevel({
+        decision: { ...chat, needsHighThinking: true },
+        state: {},
+        operationResults: [],
+        knowledgeOnlyChatRoutes: ["records"],
+      }),
+    ).toBe("high");
+    expect(
+      resolveTurnThinkingLevel({
+        decision: chat,
+        state: { activeProcess: {} },
+        operationResults: [],
+        knowledgeOnlyChatRoutes: ["records"],
+      }),
+    ).toBe("high");
   });
 });
 

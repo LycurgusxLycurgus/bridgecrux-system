@@ -17,6 +17,7 @@ export type TelegramChannelAdapterOptions = {
   maxMessageLength?: number;
   maxAttempts?: number;
   retryDelay?: (milliseconds: number) => Promise<void>;
+  formatting?: "html" | "plain";
 };
 
 export class TelegramChannelAdapter implements ChannelAdapter {
@@ -28,6 +29,7 @@ export class TelegramChannelAdapter implements ChannelAdapter {
   readonly #maxLength: number;
   readonly #maxAttempts: number;
   readonly #retryDelay: (milliseconds: number) => Promise<void>;
+  readonly #formatting: "html" | "plain";
 
   constructor(options: TelegramChannelAdapterOptions = {}) {
     const token = options.token ?? process.env.TELEGRAM_BOT_TOKEN;
@@ -39,6 +41,7 @@ export class TelegramChannelAdapter implements ChannelAdapter {
     this.#maxLength = options.maxMessageLength ?? 4_096;
     this.#maxAttempts = options.maxAttempts ?? 3;
     this.#retryDelay = options.retryDelay ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
+    this.#formatting = options.formatting ?? "html";
   }
 
   async normalizeInbound(event: unknown): Promise<NormalizedInboundMessage> {
@@ -70,7 +73,7 @@ export class TelegramChannelAdapter implements ChannelAdapter {
     return splitTelegramText(message.text, this.#maxLength).map((text) => ({
       channel: this.channel,
       destination,
-      text,
+      text: this.#formatting === "html" ? formatTelegramHtml(text) : text,
       ...(message.threadId?.includes(":") ? { replyTo: message.threadId.split(":")[1] } : {}),
       correlationId: message.correlationId,
     }));
@@ -87,6 +90,7 @@ export class TelegramChannelAdapter implements ChannelAdapter {
           body: JSON.stringify({
             chat_id: payload.destination,
             text: payload.text,
+            ...(this.#formatting === "html" ? { parse_mode: "HTML" } : {}),
             ...(payload.replyTo ? { message_thread_id: payload.replyTo } : {}),
           }),
         });
@@ -135,6 +139,81 @@ export function splitTelegramText(text: string, maxLength = 4_096): string[] {
   }
   chunks.push(remaining.join(""));
   return chunks;
+}
+
+export function formatTelegramHtml(markdown: string): string {
+  const lines = markdown.replace(/\r\n?/gu, "\n").split("\n");
+  const output: string[] = [];
+  let codeLines: string[] | undefined;
+  let codeLanguage = "";
+
+  for (const line of lines) {
+    const fence = line.match(/^```\s*([\w+-]*)\s*$/u);
+    if (fence) {
+      if (codeLines) {
+        output.push(formatCodeBlock(codeLines, codeLanguage));
+        codeLines = undefined;
+        codeLanguage = "";
+      } else {
+        codeLines = [];
+        codeLanguage = fence[1] ?? "";
+      }
+      continue;
+    }
+    if (codeLines) {
+      codeLines.push(line);
+      continue;
+    }
+    output.push(formatTelegramLine(line));
+  }
+
+  if (codeLines) output.push(formatCodeBlock(codeLines, codeLanguage));
+  return output.join("\n");
+}
+
+function formatTelegramLine(line: string): string {
+  const heading = line.match(/^#{1,6}\s+(.+)$/u);
+  if (heading) return `<b>${formatInlineMarkdown(heading[1] ?? "")}</b>`;
+  const quote = line.match(/^>\s?(.*)$/u);
+  if (quote) return `<blockquote>${formatInlineMarkdown(quote[1] ?? "")}</blockquote>`;
+  const bullet = line.match(/^\s*[-*+]\s+(.+)$/u);
+  if (bullet) return `• ${formatInlineMarkdown(bullet[1] ?? "")}`;
+  if (/^\s*(?:---+|___+|\*\*\*+)\s*$/u.test(line)) return "────────";
+  return formatInlineMarkdown(line);
+}
+
+function formatInlineMarkdown(source: string): string {
+  const preserved: string[] = [];
+  const preserve = (html: string): string => {
+    const index = preserved.push(html) - 1;
+    return `\u0000${index}\u0000`;
+  };
+
+  let text = source.replace(/`([^`\n]+)`/gu, (_match, code: string) => preserve(`<code>${escapeHtml(code)}</code>`));
+  text = text.replace(
+    /\[([^\]\n]+)\]\(((?:https?:\/\/|tg:\/\/)[^)\s]+)\)/gu,
+    (_match, label: string, url: string) => preserve(`<a href="${escapeHtmlAttribute(url)}">${escapeHtml(label)}</a>`),
+  );
+  text = escapeHtml(text);
+  text = text.replace(/\*\*([^*\n]+)\*\*/gu, "<b>$1</b>");
+  text = text.replace(/__([^_\n]+)__/gu, "<b>$1</b>");
+  text = text.replace(/~~([^~\n]+)~~/gu, "<s>$1</s>");
+  text = text.replace(/\*([^*\n]+)\*/gu, "<i>$1</i>");
+  return text.replace(/\u0000(\d+)\u0000/gu, (_match, index: string) => preserved[Number(index)] ?? "");
+}
+
+function formatCodeBlock(lines: string[], language: string): string {
+  const code = escapeHtml(lines.join("\n"));
+  const className = language ? ` class="language-${escapeHtmlAttribute(language)}"` : "";
+  return `<pre><code${className}>${code}</code></pre>`;
+}
+
+function escapeHtml(value: string): string {
+  return value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return escapeHtml(value).replaceAll('"', "&quot;");
 }
 
 function selectMessage(update: Record<string, unknown>): Record<string, unknown> | undefined {

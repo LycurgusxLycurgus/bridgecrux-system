@@ -2,14 +2,16 @@ import type { OutboundMessage, RouterInput, TutorModelRequest } from "@bridge-cr
 import { describe, expect, it, vi } from "vitest";
 import {
   BridgeCruxAdapterError,
+  GEMINI_DEFAULT_MODEL,
   GeminiModelClient,
   GeminiTaskSignalRouter,
   TelegramChannelAdapter,
+  formatTelegramHtml,
   splitTelegramText,
 } from "../src/index.js";
 
 describe("GeminiModelClient", () => {
-  it("uses JSON schema, low thinking, and default router temperature", async () => {
+  it("uses JSON schema, high thinking, and default router temperature for agentic work", async () => {
     const generated = vi.fn().mockResolvedValue({ text: '{"value":"ok"}' });
     const audit = vi.fn();
     const client = new GeminiModelClient({ client: { models: { generateContent: generated } }, audit });
@@ -27,10 +29,39 @@ describe("GeminiModelClient", () => {
     expect(generated).toHaveBeenCalledWith(
       expect.objectContaining({
         model: "gemini-test",
-        config: expect.objectContaining({ temperature: 0.2, responseMimeType: "application/json", thinkingConfig: { thinkingLevel: "LOW" } }),
+        config: expect.objectContaining({ temperature: 0.2, responseMimeType: "application/json", thinkingConfig: { thinkingLevel: "HIGH" } }),
       }),
     );
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ purpose: "router", status: "succeeded", correlationId: "corr" }));
+  });
+
+  it("defaults new integrations to Gemini 3.1 Flash-Lite and supports medium knowledge-only chat", async () => {
+    const generated = vi
+      .fn()
+      .mockResolvedValueOnce({ text: '{"value":"ok"}' })
+      .mockResolvedValueOnce({ text: "A concise factual answer." });
+    const client = new GeminiModelClient({ client: { models: { generateContent: generated } } });
+
+    await client.structured({
+      purpose: "assessment",
+      prompt: "assess",
+      input: {},
+      schema: { type: "object" },
+      correlationId: "default-model",
+      parse: (value) => value,
+    });
+    const chatRequest = tutorRequest();
+    delete chatRequest.model;
+    await client.tutor({ ...chatRequest, thinkingLevel: "medium" });
+
+    expect(generated.mock.calls[0]?.[0]).toMatchObject({
+      model: GEMINI_DEFAULT_MODEL,
+      config: { thinkingConfig: { thinkingLevel: "HIGH" } },
+    });
+    expect(generated.mock.calls[1]?.[0]).toMatchObject({
+      model: GEMINI_DEFAULT_MODEL,
+      config: { thinkingConfig: { thinkingLevel: "MEDIUM" } },
+    });
   });
 
   it("rejects invalid router schemas and converts provider failures", async () => {
@@ -110,6 +141,20 @@ describe("GeminiModelClient", () => {
     ).rejects.toMatchObject({ envelope: { code: "gemini_tool_not_allowed", status: 403 } });
     expect(execute).not.toHaveBeenCalled();
   });
+
+  it("rejects tools on medium-thinking knowledge-only chat", async () => {
+    const execute = vi.fn();
+    const client = new GeminiModelClient({ client: { models: { generateContent: vi.fn() } } });
+    await expect(
+      client.toolLoop!({
+        ...tutorRequest(),
+        thinkingLevel: "medium",
+        tools: [{ id: "records.read", description: "Read one record", inputSchema: { type: "object" } }],
+        execute,
+      }),
+    ).rejects.toMatchObject({ envelope: { code: "gemini_chat_tools_not_allowed", status: 400 } });
+    expect(execute).not.toHaveBeenCalled();
+  });
 });
 
 describe("TelegramChannelAdapter", () => {
@@ -150,6 +195,19 @@ describe("TelegramChannelAdapter", () => {
       { channel: "telegram", destination: "-1001", text: "hello", replyTo: "12", correlationId: "corr" },
       { channel: "telegram", destination: "-1001", text: "world", replyTo: "12", correlationId: "corr" },
     ]);
+  });
+
+  it("converts ordinary Markdown to safe Telegram HTML and selects HTML parse mode", async () => {
+    expect(formatTelegramHtml("# Status\n- **Ready**\nUse `npm test` & verify [docs](https://example.com?a=1&b=2)."))
+      .toBe('<b>Status</b>\n• <b>Ready</b>\nUse <code>npm test</code> &amp; verify <a href="https://example.com?a=1&amp;b=2">docs</a>.');
+
+    const fetch = vi.fn().mockResolvedValue(response({ ok: true, result: { message_id: 89 } }, 200));
+    const adapter = telegram({ fetch });
+    const [payload] = await adapter.formatOutbound(outbound({ text: "## Result\n**Saved** <unsafe>" }));
+    expect(payload?.text).toBe("<b>Result</b>\n<b>Saved</b> &lt;unsafe&gt;");
+    await adapter.send(payload!);
+    const body = JSON.parse(String((fetch.mock.calls[0]?.[1] as RequestInit | undefined)?.body)) as Record<string, unknown>;
+    expect(body).toMatchObject({ parse_mode: "HTML", text: "<b>Result</b>\n<b>Saved</b> &lt;unsafe&gt;" });
   });
 
   it("retries transient responses and returns the persisted provider message id", async () => {

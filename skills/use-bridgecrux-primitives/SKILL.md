@@ -45,8 +45,8 @@ For a stable local runtime defect with an already-correct task surface and canon
 5. Validate raw decisions in code: declared route and intent, speech act, temporal stance, references, required state and fields, mutation evidence, safety, capability-gap eligibility, and composite compatibility.
 6. Dispatch only validated decisions. Filter operations to the validated binding, enforce preconditions and preservation rules, and use durable idempotency for externally retryable mutations.
 7. Persist raw and validated decisions, operation outcomes, ledger events, messages, reports, and deferred work at their declared boundaries.
-8. Generate visible text only from an allowed copy source. Stable process surfaces use authored deterministic copy; interpretation and explanation may use the high-thinking tutor. Pass candidate text through the user-copy gate.
-9. Keep Gemini and Telegram provider behavior inside adapters. Provider metadata never substitutes for state, routing, authorization, or audit truth.
+8. Generate visible text only from an allowed copy source. Stable deterministic-process surfaces use authored copy without a model call. Knowledge-only chat uses the medium-thinking conversational tutor with no tools. Routing, extraction, ambiguity, partial edits, personalized interpretation, tool use, and every other agentic path use high thinking; a model-proposed `needsHighThinking` value may escalate but never downgrade this runtime policy. Pass candidate text through the user-copy gate.
+9. Default new Gemini integrations to `gemini-3.1-flash-lite` and select its thinking level through configuration rather than inventing model aliases. Keep Gemini and Telegram provider behavior inside adapters. Render outbound Telegram Markdown through the adapter's safe Telegram formatting contract. Provider metadata never substitutes for state, routing, authorization, or audit truth.
 10. Validate one complete real turn from inbound normalization through persisted outcome, truthful copy, delivery result, and audit evidence.
 
 ## Preserve Application Boundaries

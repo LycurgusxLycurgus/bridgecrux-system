@@ -29,6 +29,9 @@ describe("BridgeCrux skills installer", () => {
     await installBridgeCruxSkills(options);
 
     for (const name of BRIDGECRUX_SKILL_NAMES) expect((await stat(join(target, name, "SKILL.md"))).isFile()).toBe(true);
+    const routeSkill = await readFile(join(target, "anticipate-crux-routes", "SKILL.md"), "utf8");
+    expect(routeSkill).toContain("Audit Duplicates And Contradictions");
+    expect(routeSkill).toContain("Run One All-Route Simulation");
     for (const filename of ["AGENTS.md", "CLAUDE.md"]) {
       const source = await readFile(join(project, filename), "utf8");
       expect(source.match(new RegExp(MANAGED_BLOCK_START, "g"))).toHaveLength(1);
@@ -65,5 +68,20 @@ describe("BridgeCrux skills installer", () => {
     });
     expect(result.dryRun).toBe(true);
     await expect(stat(join(project, "AGENTS.md"))).rejects.toThrow();
+  });
+
+  it("supports a repository-local .codex skills root without touching a global target", async () => {
+    const root = await mkdtemp(join(tmpdir(), "bridgecrux-skills-local-"));
+    const project = join(root, "app");
+    const target = join(project, ".codex", "skills");
+    await mkdir(project);
+
+    const result = await installBridgeCruxSkills({ target, project, bundledDirectory });
+
+    expect(result.target).toBe(resolve(target));
+    for (const name of BRIDGECRUX_SKILL_NAMES) {
+      expect((await stat(join(project, ".codex", "skills", name, "SKILL.md"))).isFile()).toBe(true);
+    }
+    expect(await readFile(join(project, "AGENTS.md"), "utf8")).toContain(MANAGED_BLOCK_START);
   });
 });

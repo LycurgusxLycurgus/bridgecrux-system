@@ -6,8 +6,9 @@ import { BRIDGECRUX_VERSION } from "../src/index.js";
 import { runBridgeCruxCli } from "../src/cli.js";
 
 describe("BridgeCrux kit", () => {
-  it("exports the synchronized framework version", () => {
-    expect(BRIDGECRUX_VERSION).toBe("0.1.0");
+  it("exports the synchronized framework version", async () => {
+    const manifest = JSON.parse(await readFile(resolve("packages/kit/package.json"), "utf8")) as { version: string };
+    expect(BRIDGECRUX_VERSION).toBe(manifest.version);
   });
 
   it("validates and builds canonical content through the umbrella CLI", async () => {

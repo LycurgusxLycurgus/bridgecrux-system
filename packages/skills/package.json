@@ -1,6 +1,6 @@
 {
   "name": "@bridge-crux/skills",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "BridgeCrux Agent Skills installer and managed instruction registration",
   "type": "module",
   "license": "Apache-2.0",

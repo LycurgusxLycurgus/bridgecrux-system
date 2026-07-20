@@ -1,6 +1,6 @@
 ---
 name: anticipate-crux-routes
-description: Create, audit, complete, and expand the task-signal surface and route implementation checklist for a BridgeCrux or agentic application. Use when starting a crux, translating an existing UI or backend into agent routes, reviewing whether routes reach handlers and software operations, updating a crux after new features, investigating unhandled requests, or preparing BridgeCrux primitive extraction.
+description: Create, audit, complete, simulate, and expand the task-signal surface and route implementation checklist for a BridgeCrux or agentic application. Use when starting a crux, translating an existing UI or backend into agent routes, reviewing whether routes reach handlers and software operations, checking route duplication or contradiction, updating a crux after new features, investigating unhandled requests, or preparing BridgeCrux primitive extraction.
 ---
 
 # Anticipate Crux Routes
@@ -77,7 +77,22 @@ Use the audit-only defect labels from the gap taxonomy for construction failures
 
 A correctly recognized route is only half coverage. Verify that dispatch reaches the promised operation. If the router classifies a turn as a supported mutation but the handler falls through to a generic renderer, classify the finding as `add_handler_binding`. Do not let this become a runtime capability gap unless no existing route, intent, state contract, or backend operation can truthfully execute it.
 
-### 2.1 Maintain The Route Implementation Checklist
+### 2.1 Audit Duplicates And Contradictions
+
+Run one static reconciliation across router instructions, route and intent types, dispatch order, handler bindings, operations, aliases, fallbacks, thinking policy, and tests. Report:
+
+- duplicate routes or intents that represent the same user goal and state transition;
+- overlapping utterance or guard conditions that can select different handlers;
+- contradictory mutation, reference, permission, preservation, or confirmation rules;
+- routes declared in prompts or types but absent from dispatch, and dispatch branches absent from canonical declarations;
+- aliases, commands, or tools whose guards differ from their natural-language path;
+- broad fallbacks that shadow a specific route or turn extraction failure into an unrelated renderer;
+- chat paths that expose tools or high-cost mutations, and agentic paths that can be downgraded from required high thinking by model suggestion;
+- tests that encode mutually incompatible expected routes for the same state and signal.
+
+Resolve findings at the narrowest source of truth. Merge semantic duplicates when their contracts are identical. Preserve separate routes only when state bundle, authorization, operation, audit meaning, or user recovery genuinely differs, and make priority explicit. Finish with zero unexplained duplicates or contradictions.
+
+### 2.2 Maintain The Route Implementation Checklist
 
 Create one stable checklist row for every user action, scheduled event, deterministic transition, correction path, history path, and recovery action supported or exposed by the task surface. Record:
 
@@ -109,6 +124,14 @@ Use these statuses consistently:
 Mark a path `verified` only after checking the full chain from task signal through persisted result and user-visible response. A router label, handler name, backend function, or isolated unit test is insufficient by itself.
 
 When creating a crux, derive the first checklist from the UI/pre-router flow and operation inventory. During an audit, revalidate existing rows instead of trusting old status. After an app update, diff the UI, operations, states, and deterministic processes against the checklist, add new paths, update changed contracts, and mark broken paths `regressed` without deleting their history.
+
+### 2.3 Run One All-Route Simulation
+
+Create one table-driven regression test that simulates the complete declared task surface in a single test block. Give every route and intent at least one representative turn in its valid state, then include boundary rows for ambiguous extraction, missing fields, explicit prior-item references, conflicting signals, aliases, deterministic-process state, unsupported execution, and ordinary knowledge-only chat.
+
+Each row must assert the raw and validated route, thinking policy, allowed tools, handler, operation or deliberate no-op, mutation boundary, persistence effect, copy source, delivery result, and audit evidence. Run every row through the real router-to-controller path rather than testing prompt text alone. The test must fail when a route is unreachable, shadowed, contradictory, connected to a generic fallback, or allowed to claim an unpersisted effect.
+
+Keep this as one maintained route-surface simulation so new routes cannot be added without becoming visible beside all existing routes. Focused unit tests may supplement it; they do not replace it.
 
 ### 3. Apply Bounded Deduction
 
@@ -169,13 +192,15 @@ Produce:
 1. **Pre-router UI flow:** screens or panels, user actions, submitted fields, backend operation, router route/intent, and gap status.
 2. **HTML task-surface sketch:** minimal no-CSS HTML when no concrete UI exists or when the UI needs to be made explicit for audit.
 3. **Route implementation checklist:** maintained inside the pre-router flow with one row per complete backend-agent communication path and explicit verification status.
-4. **Coverage summary:** operations, routes, intents, and orphaned bindings.
-5. **Candidate table:** user need, evidence, current handling, primary gap type, recommendation, mutation effect, priority, confidence.
-6. **Required changes:** exact route/intent/handler/tool/schema/test changes for accepted candidates.
-7. **Rejected candidates:** concise reason they should not be added.
-8. **Runtime gap guidance:** which unresolved candidates should emit a typed capability-gap report.
-9. **Fluidity review:** transcript visibility, false-positive gap risk, stale metadata, fallback loops, and whether read-only questions are being mistaken for executable requests.
-10. **Root-cause generalization:** the smallest universal contract change that prevents the observed failure family, not only the literal transcript.
+4. **Duplicate/contradiction audit:** every overlap or conflict, its authoritative resolution, and any deliberate distinction.
+5. **All-route simulation:** one table-driven test covering every route/intent and the shared boundary cases.
+6. **Coverage summary:** operations, routes, intents, and orphaned bindings.
+7. **Candidate table:** user need, evidence, current handling, primary gap type, recommendation, mutation effect, priority, confidence.
+8. **Required changes:** exact route/intent/handler/tool/schema/test changes for accepted candidates.
+9. **Rejected candidates:** concise reason they should not be added.
+10. **Runtime gap guidance:** which unresolved candidates should emit a typed capability-gap report.
+11. **Fluidity review:** transcript visibility, false-positive gap risk, stale metadata, fallback loops, and whether read-only questions are being mistaken for executable requests.
+12. **Root-cause generalization:** the smallest universal contract change that prevents the observed failure family, not only the literal transcript.
 
 Priority:
 
@@ -200,6 +225,8 @@ Before accepting a candidate, verify:
 - Composite controls are split wherever fields or lifecycle actions have distinct execution contracts.
 - Hidden aliases preserve the same state and mutation guards as natural-language routes.
 - New or changed UI, operations, states, and deterministic processes have been reconciled with the checklist.
+- The static audit reports zero unexplained duplicate or contradictory routes, guards, bindings, policies, and expectations.
+- One table-driven regression test simulates every declared route and intent through validation, execution or no-op, copy, delivery, and audit.
 - The candidate improves recovery without turning ordinary conversation into an error state.
 - Capability-gap UX is reserved for explicit unsupported execution, never mere curiosity or a request for explanation.
 

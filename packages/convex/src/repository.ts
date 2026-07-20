@@ -635,7 +635,12 @@ function hasStrings<T extends object, K extends string>(value: T, key: K): value
 }
 
 function isCopySource(value: string | undefined): value is RuntimeMessage["copySource"] & string {
-  return value === "authored_deterministic" || value === "high_thinking_tutor" || value === "safe_fallback";
+  return (
+    value === "authored_deterministic" ||
+    value === "conversational_tutor" ||
+    value === "high_thinking_tutor" ||
+    value === "safe_fallback"
+  );
 }
 
 function record(value: unknown): value is Record<string, unknown> {

@@ -1,6 +1,7 @@
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import type {
   JsonValue,
+  ModelThinkingLevel,
   ModelClient,
   RawRouterDecision,
   RouterInput,
@@ -29,11 +30,13 @@ type GeminiClient = {
   };
 };
 
+export const GEMINI_DEFAULT_MODEL = "gemini-3.1-flash-lite";
+
 export type GeminiCallAudit = (event: {
   purpose: "router" | "memory" | "assessment" | "tutor" | "tool";
   model: string;
   correlationId: string;
-  thinkingLevel: "low" | "high";
+  thinkingLevel: ModelThinkingLevel;
   status: "succeeded" | "failed";
 }) => void | Promise<void>;
 
@@ -42,12 +45,14 @@ export type GeminiModelClientOptions = {
   client?: GeminiClient;
   audit?: GeminiCallAudit;
   maxToolRounds?: number;
+  defaultModel?: string;
 };
 
 export class GeminiModelClient implements ModelClient {
   readonly #client: GeminiClient;
   readonly #audit: GeminiCallAudit | undefined;
   readonly #maxToolRounds: number;
+  readonly #defaultModel: string;
 
   constructor(options: GeminiModelClientOptions = {}) {
     const apiKey = options.apiKey ?? process.env.GEMINI_API_KEY;
@@ -57,36 +62,40 @@ export class GeminiModelClient implements ModelClient {
     this.#client = options.client ?? (new GoogleGenAI({ apiKey: apiKey! }) as unknown as GeminiClient);
     this.#audit = options.audit;
     this.#maxToolRounds = options.maxToolRounds ?? 4;
+    this.#defaultModel = options.defaultModel ?? GEMINI_DEFAULT_MODEL;
   }
 
   async structured<T>(request: StructuredModelRequest<T>): Promise<T> {
-    const thinkingLevel = request.thinkingLevel ?? "low";
+    const model = request.model ?? this.#defaultModel;
+    const thinkingLevel = request.thinkingLevel ?? "high";
     try {
       const response = await this.#client.models.generateContent({
-        model: request.model,
+        model,
         contents: `${request.prompt}\n\nINPUT_JSON:\n${safeJson(request.input)}`,
         config: {
           temperature: request.temperature ?? 0.2,
           responseMimeType: "application/json",
           responseJsonSchema: request.schema,
-          thinkingConfig: { thinkingLevel: thinkingLevel === "high" ? ThinkingLevel.HIGH : ThinkingLevel.LOW },
+          thinkingConfig: { thinkingLevel: toProviderThinkingLevel(thinkingLevel) },
         },
       });
       const value = parseJsonResponse(response.text);
       const parsed = request.parse(value);
-      await this.#record(request.purpose, request.model, request.correlationId, thinkingLevel, "succeeded");
+      await this.#record(request.purpose, model, request.correlationId, thinkingLevel, "succeeded");
       return parsed;
     } catch (error) {
-      await this.#record(request.purpose, request.model, request.correlationId, thinkingLevel, "failed");
+      await this.#record(request.purpose, model, request.correlationId, thinkingLevel, "failed");
       if (error instanceof BridgeCruxAdapterError) throw error;
       throw providerError("model", error);
     }
   }
 
   async tutor(request: TutorModelRequest): Promise<string> {
+    const model = request.model ?? this.#defaultModel;
+    const thinkingLevel = request.thinkingLevel ?? "high";
     try {
       const response = await this.#client.models.generateContent({
-        model: request.model,
+        model,
         contents: safeJson({
           userMessage: request.userMessage,
           recentMessages: request.recentMessages,
@@ -97,15 +106,15 @@ export class GeminiModelClient implements ModelClient {
         config: {
           systemInstruction: request.systemPrompt,
           temperature: 0.4,
-          thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+          thinkingConfig: { thinkingLevel: toProviderThinkingLevel(thinkingLevel) },
         },
       });
       const text = response.text?.trim();
       if (!text) throw new BridgeCruxAdapterError({ status: 502, code: "gemini_empty_response", message: "Gemini returned no user copy" });
-      await this.#record("tutor", request.model, request.correlationId, "high", "succeeded");
+      await this.#record("tutor", model, request.correlationId, thinkingLevel, "succeeded");
       return text;
     } catch (error) {
-      await this.#record("tutor", request.model, request.correlationId, "high", "failed");
+      await this.#record("tutor", model, request.correlationId, thinkingLevel, "failed");
       if (error instanceof BridgeCruxAdapterError) throw error;
       throw providerError("model", error);
     }
@@ -113,12 +122,20 @@ export class GeminiModelClient implements ModelClient {
 
   async toolLoop(request: ToolLoopRequest): Promise<ToolLoopResult> {
     if (request.tools.length === 0) return { text: await this.tutor(request), calls: [] };
+    if (request.thinkingLevel === "medium") {
+      throw new BridgeCruxAdapterError({
+        status: 400,
+        code: "gemini_chat_tools_not_allowed",
+        message: "Medium-thinking knowledge-only chat cannot use tools",
+      });
+    }
+    const model = request.model ?? this.#defaultModel;
     const allowed = new Map(request.tools.map((tool) => [tool.id, tool]));
     const calls: ToolLoopResult["calls"] = [];
     for (let round = 0; round < this.#maxToolRounds; round += 1) {
       try {
         const response = await this.#client.models.generateContent({
-          model: request.model,
+          model,
           contents: safeJson({
             userMessage: request.userMessage,
             recentMessages: request.recentMessages,
@@ -138,7 +155,7 @@ export class GeminiModelClient implements ModelClient {
         });
         const selection = parseToolSelection(parseJsonResponse(response.text));
         if (selection.action === "respond") {
-          await this.#record("tool", request.model, request.correlationId, "high", "succeeded");
+          await this.#record("tool", model, request.correlationId, "high", "succeeded");
           return { text: selection.text, calls };
         }
         if (!allowed.has(selection.toolId)) {
@@ -150,9 +167,9 @@ export class GeminiModelClient implements ModelClient {
         }
         const output = await request.execute(selection.toolId, selection.input);
         calls.push({ toolId: selection.toolId, input: selection.input, output });
-        await this.#record("tool", request.model, request.correlationId, "high", "succeeded");
+        await this.#record("tool", model, request.correlationId, "high", "succeeded");
       } catch (error) {
-        await this.#record("tool", request.model, request.correlationId, "high", "failed");
+        await this.#record("tool", model, request.correlationId, "high", "failed");
         if (error instanceof BridgeCruxAdapterError) throw error;
         throw providerError("model", error);
       }
@@ -168,7 +185,7 @@ export class GeminiModelClient implements ModelClient {
     purpose: "router" | "memory" | "assessment" | "tutor" | "tool",
     model: string,
     correlationId: string,
-    thinkingLevel: "low" | "high",
+    thinkingLevel: ModelThinkingLevel,
     status: "succeeded" | "failed",
   ): Promise<void> {
     await this.#audit?.({ purpose, model, correlationId, thinkingLevel, status });
@@ -176,7 +193,7 @@ export class GeminiModelClient implements ModelClient {
 }
 
 export type GeminiTaskSignalRouterOptions = {
-  model: string;
+  model?: string;
   client: ModelClient;
   prompt?: string;
 };
@@ -187,7 +204,7 @@ export class GeminiTaskSignalRouter implements TaskSignalRouter {
   readonly #prompt: string;
 
   constructor(options: GeminiTaskSignalRouterOptions) {
-    this.modelName = options.model;
+    this.modelName = options.model ?? GEMINI_DEFAULT_MODEL;
     this.#client = options.client;
     this.#prompt =
       options.prompt ??
@@ -203,7 +220,7 @@ export class GeminiTaskSignalRouter implements TaskSignalRouter {
       schema: ROUTER_DECISION_SCHEMA,
       correlationId: input.message.correlationId,
       temperature: 0.2,
-      thinkingLevel: "low",
+      thinkingLevel: "high",
       parse: parseRouterDecision,
     });
   }
@@ -307,6 +324,13 @@ function parseToolSelection(value: unknown): ToolSelection {
 
 function safeJson(value: unknown): string {
   return JSON.stringify(value, (_key, item: unknown) => (typeof item === "bigint" ? item.toString() : item)) ?? "null";
+}
+
+function toProviderThinkingLevel(level: ModelThinkingLevel): ThinkingLevel {
+  if (level === "minimal") return ThinkingLevel.MINIMAL;
+  if (level === "low") return ThinkingLevel.LOW;
+  if (level === "medium") return ThinkingLevel.MEDIUM;
+  return ThinkingLevel.HIGH;
 }
 
 function record(value: unknown): value is Record<string, unknown> {

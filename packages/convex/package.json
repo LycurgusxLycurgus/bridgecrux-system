@@ -1,6 +1,6 @@
 {
   "name": "@bridge-crux/convex",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Convex-first BridgeCrux persistence primitives",
   "type": "module",
   "license": "Apache-2.0",
@@ -10,15 +10,35 @@
     "directory": "packages/convex"
   },
   "homepage": "https://github.com/LycurgusxLycurgus/bridgecrux-system#readme",
-  "bugs": { "url": "https://github.com/LycurgusxLycurgus/bridgecrux-system/issues" },
-  "engines": { "node": ">=22.0.0" },
-  "publishConfig": { "access": "public" },
+  "bugs": {
+    "url": "https://github.com/LycurgusxLycurgus/bridgecrux-system/issues"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "sideEffects": false,
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": { ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" } },
-  "dependencies": { "@bridge-crux/core": "0.1.0" },
-  "peerDependencies": { "convex": ">=1.42.2 <2.0.0" },
-  "devDependencies": { "convex": "1.42.2", "convex-test": "0.0.54" }
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@bridge-crux/core": "0.1.1"
+  },
+  "peerDependencies": {
+    "convex": ">=1.42.2 <2.0.0"
+  },
+  "devDependencies": {
+    "convex": "1.42.2",
+    "convex-test": "0.0.54"
+  }
 }

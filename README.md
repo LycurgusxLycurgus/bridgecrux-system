@@ -27,6 +27,15 @@ BridgeCrux `0.1.x` is ESM-only and requires Node.js 22 or newer.
 
 ```bash
 npm install @bridge-crux/kit convex
+npx @bridge-crux/skills install --target ./.codex/skills --project .
+```
+
+This project-local installation keeps all three skills under the repository's
+`.codex/skills/`; nothing is installed into `$CODEX_HOME`. It is the recommended
+default when BridgeCrux belongs to one application. To share the skills across
+all repositories for the current Codex user, install them globally instead:
+
+```bash
 npx @bridge-crux/skills install --target "$CODEX_HOME/skills" --project .
 ```
 
@@ -39,6 +48,14 @@ npx bridgecrux doctor --project .
 ```
 
 Use `$use-bridgecrux-primitives` for any BridgeCrux-related agentic-app work. It coordinates `$anticipate-crux-routes` for the executable task surface and `$write-crux-prompts` for canonical content.
+
+New Gemini integrations default to the stable `gemini-3.1-flash-lite` model.
+BridgeCrux uses high thinking for routing and all other agentic behavior,
+medium thinking only for explicitly configured knowledge-only chat routes with
+no tools, and no model call for stable authored deterministic-process copy.
+Telegram output is converted from ordinary Markdown into Telegram-safe HTML so
+headings, emphasis, lists, links, quotations, and code render instead of leaking
+raw Markdown syntax.
 
 ## Develop This Repository
 

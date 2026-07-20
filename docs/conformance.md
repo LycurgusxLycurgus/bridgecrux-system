@@ -38,7 +38,7 @@ npm run test:live
 
 Each live test skips unless its explicit configuration exists:
 
-- Gemini: `GEMINI_API_KEY` and `BRIDGECRUX_GEMINI_MODEL`.
+- Gemini: `GEMINI_API_KEY`; optional `BRIDGECRUX_GEMINI_MODEL` overrides the default `gemini-3.1-flash-lite`.
 - Telegram read-only authentication: `TELEGRAM_BOT_TOKEN`.
 - Telegram delivery: additionally set `BRIDGECRUX_LIVE_SEND=1` and `TELEGRAM_TEST_CHAT_ID`.
 - Convex: `CONVEX_URL` and `BRIDGECRUX_CONVEX_HEALTH_FUNCTION`, naming a public query that accepts `{}`.
@@ -48,4 +48,3 @@ Live Telegram delivery is opt-in because it creates an external message. Tests n
 ## Supported Runtimes
 
 Release automation should run the offline gate on Node.js 22 and 24. Package manifests reject Node versions below 22. The repository is ESM-only.
-

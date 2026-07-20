@@ -35,8 +35,9 @@ export type TurnControllerOptions = {
   copyGate: UserCopyGate;
   validationContext(state: Parameters<RouterValidationContextFactory>[0]): RouterValidationContext;
   tutor: {
-    model: string;
+    model?: string;
     systemPrompt: string;
+    knowledgeOnlyChatRoutes?: string[];
   };
   now?: () => number;
   id?: () => string;
@@ -142,8 +143,14 @@ export class DefaultTurnController implements TurnController {
       if (ledger.length > 0) await this.options.ports.audit.appendLedger(ledger);
 
       const responsePlans = executions.map((execution) => execution.plan.responsePlan);
-      const text = await this.#renderCopy(input, state, decision, operationResults, responsePlans);
-      const source = selectCopySource(responsePlans, decision.needsHighThinking);
+      const thinkingLevel = resolveTurnThinkingLevel({
+        decision,
+        state,
+        operationResults,
+        knowledgeOnlyChatRoutes: this.options.tutor.knowledgeOnlyChatRoutes ?? [],
+      });
+      const text = await this.#renderCopy(input, state, decision, operationResults, responsePlans, thinkingLevel);
+      const source = selectCopySource(responsePlans, thinkingLevel);
       const copyResult = this.options.copyGate.validate({
         source,
         text,
@@ -201,15 +208,18 @@ export class DefaultTurnController implements TurnController {
     decision: Parameters<RuntimePorts["audit"]["persistRouterDecision"]>[0]["decision"] & { additionalSignals?: unknown },
     operationResults: OperationResult[],
     plans: ResponsePlan[],
+    thinkingLevel: "medium" | "high",
   ): Promise<string> {
     const validated = decision as Extract<typeof decision, { additionalSignals?: unknown }> & { validationStatus: string };
     const authored = plans.flatMap((plan) => (plan.authoredText ? [plan.authoredText] : []));
-    const needsTutor = plans.some((plan) => plan.source === "high_thinking_tutor") || plans.length === 0;
+    const needsTutor = plans.some(
+      (plan) => plan.source === "high_thinking_tutor" || plan.source === "conversational_tutor",
+    ) || plans.length === 0;
     if (!needsTutor && authored.length > 0) return authored.join("\n\n");
     const fallback = plans[0]?.fallbackText ?? "I need a little more information before I can do that safely.";
     try {
       return await this.options.ports.model.tutor({
-        model: this.options.tutor.model,
+        ...(this.options.tutor.model ? { model: this.options.tutor.model } : {}),
         systemPrompt: this.options.tutor.systemPrompt,
         userMessage: state.recentMessages.at(-1)?.text ?? "",
         recentMessages: state.recentMessages,
@@ -217,7 +227,7 @@ export class DefaultTurnController implements TurnController {
         operationResults,
         allowedContext: { cruxId: input.cruxId, availableState: state.availableState },
         correlationId: operationResults[0]?.operationId ?? state.session.id,
-        thinkingLevel: "high",
+        thinkingLevel,
       });
     } catch {
       return fallback;
@@ -314,8 +324,27 @@ function canExecute(decision: ValidatedTaskSignalDecision): boolean {
   return decision.validationStatus === "accepted" || decision.validationStatus === "corrected";
 }
 
-function selectCopySource(plans: ResponsePlan[], needsHighThinking: boolean): ResponsePlan["source"] {
-  if (needsHighThinking || plans.some((plan) => plan.source === "high_thinking_tutor")) return "high_thinking_tutor";
+export function resolveTurnThinkingLevel(input: {
+  decision: ValidatedTaskSignalDecision & { additionalSignals?: ValidatedTaskSignalDecision[] };
+  state: { activeProcess?: unknown; activeSpecificFunction?: unknown };
+  operationResults: OperationResult[];
+  knowledgeOnlyChatRoutes: string[];
+}): "medium" | "high" {
+  const isKnowledgeOnlyChat =
+    input.knowledgeOnlyChatRoutes.includes(input.decision.route) &&
+    !input.decision.needsHighThinking &&
+    !input.decision.allowedMutation &&
+    input.operationResults.length === 0 &&
+    !input.state.activeProcess &&
+    !input.state.activeSpecificFunction &&
+    !(input.decision.additionalSignals ?? []).some((signal) => signal.allowedMutation);
+  return isKnowledgeOnlyChat ? "medium" : "high";
+}
+
+function selectCopySource(plans: ResponsePlan[], thinkingLevel: "medium" | "high"): ResponsePlan["source"] {
+  if (plans.length > 0 && plans.every((plan) => plan.source === "authored_deterministic")) return "authored_deterministic";
+  if (thinkingLevel === "high" || plans.some((plan) => plan.source === "high_thinking_tutor")) return "high_thinking_tutor";
+  if (thinkingLevel === "medium") return "conversational_tutor";
   return plans[0]?.source ?? "safe_fallback";
 }
 

@@ -18,6 +18,11 @@ if (rootManifest.version !== expectedVersion) {
   );
 }
 
+const kitIndex = await readFile("packages/kit/src/index.ts", "utf8");
+if (!kitIndex.includes(`export const BRIDGECRUX_VERSION = "${expectedVersion}";`)) {
+  errors.push(`packages/kit/src/index.ts does not export BRIDGECRUX_VERSION ${expectedVersion}`);
+}
+
 for (const releasePackage of releasePackages) {
   const manifest = JSON.parse(
     await readFile(releasePackage.manifest, "utf8"),

@@ -1,6 +1,6 @@
 ---
 name: write-crux-prompts
-description: Create or revise the canonical BridgeCrux prompt package for a crux: system.prompt.md, assistants.md, and specific-functions/*.md. Use when creating a crux from scratch, transforming an application into a crux, adding or changing task signals and routes, documenting the agent's frontend/backend harness, defining deterministic processes, or correcting drift between prompt content and executable application behavior.
+description: "Create or revise the canonical BridgeCrux prompt package for a crux: system.prompt.md, assistants.md, and specific-functions/*.md. Use when creating a crux from scratch, transforming an application into a crux, adding or changing task signals and routes, documenting the agent's frontend/backend harness, defining deterministic processes, or correcting drift between prompt content and executable application behavior."
 ---
 
 # Write Crux Prompts
@@ -389,7 +389,7 @@ Use a universal semantic envelope with crux-declared route and intent values. Ad
 }
 ```
 
-The low-thinking router returns JSON only, never user copy, never tool execution, and never direct persistence.
+The router uses high thinking by default with `gemini-3.1-flash-lite` and returns JSON only, never user copy, never tool execution, and never direct persistence. Treat its `needsHighThinking` field as advisory escalation metadata: runtime policy keeps every agentic path at high thinking. Only explicitly declared knowledge-only chat may use medium thinking with no tools; deterministic authored process output uses no model call.
 
 #### Deterministic Decision Validation
 

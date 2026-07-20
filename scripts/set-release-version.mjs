@@ -31,6 +31,17 @@ for (const manifestPath of manifestPaths) {
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
+const kitIndexPath = "packages/kit/src/index.ts";
+const kitIndex = await readFile(kitIndexPath, "utf8");
+const versionDeclaration = /export const BRIDGECRUX_VERSION = "[^"]+";/;
+if (!versionDeclaration.test(kitIndex)) {
+  throw new Error(`Could not find BRIDGECRUX_VERSION in ${kitIndexPath}`);
+}
+await writeFile(
+  kitIndexPath,
+  kitIndex.replace(versionDeclaration, `export const BRIDGECRUX_VERSION = "${version}";`),
+);
+
 const lockResult = runNpm(
   ["install", "--package-lock-only", "--ignore-scripts"],
   { stdio: "inherit" },

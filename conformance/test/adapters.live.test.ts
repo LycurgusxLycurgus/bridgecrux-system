@@ -4,13 +4,13 @@ import { makeFunctionReference } from "convex/server";
 import { describe, expect, it } from "vitest";
 
 describe("live adapter gates", () => {
-  it.skipIf(!process.env.GEMINI_API_KEY || !process.env.BRIDGECRUX_GEMINI_MODEL)(
+  it.skipIf(!process.env.GEMINI_API_KEY)(
     "accepts a real Gemini structured response",
     async () => {
       const model = new GeminiModelClient();
       const result = await model.structured({
         purpose: "assessment",
-        model: process.env.BRIDGECRUX_GEMINI_MODEL!,
+        ...(process.env.BRIDGECRUX_GEMINI_MODEL ? { model: process.env.BRIDGECRUX_GEMINI_MODEL } : {}),
         prompt: "Return the requested health status as JSON.",
         input: { requested: "ok" },
         schema: {
@@ -20,7 +20,7 @@ describe("live adapter gates", () => {
           properties: { status: { type: "string", enum: ["ok"] } },
         },
         correlationId: "live-gemini",
-        thinkingLevel: "low",
+        thinkingLevel: "high",
         temperature: 0,
         parse(value) {
           if (!record(value) || value.status !== "ok") throw new Error("Gemini live response did not match the health schema");
