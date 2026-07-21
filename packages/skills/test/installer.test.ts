@@ -40,6 +40,9 @@ describe("BridgeCrux skills installer", () => {
       expect(source).toContain("$anticipate-crux-routes");
       expect(source).toContain("$write-crux-prompts");
       expect(source).toContain("@bridge-crux/kit");
+      expect(source).toContain("every nontrivial turn");
+      expect(source).toContain("agent does not know");
+      expect(source).toContain("never fill that gap from model memory");
     }
   });
 

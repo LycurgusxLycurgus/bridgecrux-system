@@ -4,6 +4,8 @@ import type {
   RuntimeAuditStore,
   RuntimeJobQueue,
   RuntimeStateStore,
+  StructuredInteractionStore,
+  TurnLeaseStore,
 } from "@bridge-crux/core";
 import type { IdempotencyStore } from "@bridge-crux/core";
 import type { ConvexBridgeCruxRepository } from "./repository.js";
@@ -15,6 +17,8 @@ export function repositoryPorts(repository: ConvexBridgeCruxRepository): {
   reports: ReportStore;
   jobs: RuntimeJobQueue;
   idempotency: IdempotencyStore;
+  interactions: StructuredInteractionStore;
+  turns: TurnLeaseStore;
 } {
   return {
     state: {
@@ -43,6 +47,14 @@ export function repositoryPorts(repository: ConvexBridgeCruxRepository): {
           "Convex idempotency writes require execution context; use recordOperation with user, session, and crux identifiers",
         );
       },
+    },
+    interactions: {
+      issue: (input) => repository.issueInteraction(input),
+      consume: (input) => repository.consumeInteraction(input),
+    },
+    turns: {
+      acquire: (input) => repository.acquireTurnLease(input),
+      release: (input) => repository.releaseTurnLease(input),
     },
   };
 }

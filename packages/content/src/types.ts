@@ -1,11 +1,15 @@
 export type ModelProfile = {
   provider: string;
   model: string;
-  thinking: "low" | "high";
   temperature?: number;
 };
 
+export type ContentExecutionPolicy =
+  | { mode: "deterministic"; toolIds: [] }
+  | { mode: "hybrid" | "model"; thinkingLevel: "medium" | "high"; toolIds: string[] };
+
 export type CruxConfig = {
+  schemaVersion: 2;
   id: string;
   version: string;
   locale: string;
@@ -16,7 +20,12 @@ export type CruxConfig = {
   models: {
     router: ModelProfile;
     tutor: ModelProfile;
+    assessment?: ModelProfile;
     memory?: ModelProfile;
+  };
+  execution: {
+    freeformRouterThinkingLevel: "medium";
+    routes: Record<string, ContentExecutionPolicy>;
   };
   channels: string[];
   memory: {
@@ -33,7 +42,7 @@ export type CruxConfig = {
   };
 };
 
-export type ContentFileKind = "config" | "system" | "assistants" | "specific_function" | "deterministic_process";
+export type ContentFileKind = "config" | "system" | "assistants" | "specific_function" | "process";
 
 export type DiscoveredContentFile = {
   path: string;
@@ -94,11 +103,12 @@ export type SpecificFunctionManifest = {
   body: string;
 };
 
-export type DeterministicProcessManifest = {
+export type ProcessManifest = {
   id: string;
   version: string;
   entryRoutes: string[];
-  steps: string[];
+  advanceOperationId: string;
+  steps: ProcessStepManifest[];
   stateReads: string[];
   stateWrites: string[];
   allowsDeferral: boolean;
@@ -106,8 +116,18 @@ export type DeterministicProcessManifest = {
   body: string;
 };
 
+export type ProcessStepManifest = {
+  id: string;
+  input: Record<string, unknown>;
+  execution: ContentExecutionPolicy;
+  completionMode: "controller" | "model_tool";
+  nextStepId?: string;
+  confirmationPolicy: "never" | "on_correction" | "always";
+  missingFieldQuestions: Record<string, string>;
+};
+
 export type ContentManifest = {
-  schemaVersion: 1;
+  schemaVersion: 2;
   crux: {
     id: string;
     version: string;
@@ -117,7 +137,27 @@ export type ContentManifest = {
   systemPrompt: string;
   assistants: string;
   specificFunctions: SpecificFunctionManifest[];
-  deterministicProcesses: DeterministicProcessManifest[];
+  processes: ProcessManifest[];
+  routeChecklist: {
+    pathId: string;
+    route: string;
+    intent: string;
+    execution: ContentExecutionPolicy;
+    status: "designed";
+  }[];
+  handlerStubs: {
+    id: string;
+    route: string;
+    intent: string;
+    operationIds: string[];
+  }[];
+  regressionScenarios: {
+    id: string;
+    kind: "route" | "process_step";
+    expectedMode: "deterministic" | "hybrid" | "model";
+    expectedThinkingLevel?: "medium" | "high";
+    expectedToolIds: string[];
+  }[];
   generatedAt: string;
   sourceFiles: string[];
 };

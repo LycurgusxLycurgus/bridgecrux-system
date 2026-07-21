@@ -87,6 +87,25 @@ describe("GeminiModelClient", () => {
     ).rejects.toMatchObject({ envelope: { code: "model_provider_error", status: 502 } });
   });
 
+  it("routes freeform conversation at medium thinking", async () => {
+    const generated = vi.fn().mockResolvedValue({ text: JSON.stringify({
+      route: "conversation",
+      intent: "explain",
+      confidence: 0.9,
+      speechAct: "question",
+      temporalStance: "present",
+      targetReferences: [],
+      stateMutationCandidate: "none",
+      mutationEvidence: "insufficient",
+      safetyFlag: "none",
+      extracted: {},
+      reason: "knowledge question",
+    }) });
+    const client = new GeminiModelClient({ client: { models: { generateContent: generated } } });
+    await new GeminiTaskSignalRouter({ client }).decide(routerInput());
+    expect(generated.mock.calls[0]?.[0]).toMatchObject({ config: { thinkingConfig: { thinkingLevel: "MEDIUM" } } });
+  });
+
   it("uses high thinking for tutor copy and sends only the allowed request context", async () => {
     const generated = vi.fn().mockResolvedValue({ text: "  Here is the explanation.  " });
     const client = new GeminiModelClient({ client: { models: { generateContent: generated } } });
@@ -142,18 +161,22 @@ describe("GeminiModelClient", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it("rejects tools on medium-thinking knowledge-only chat", async () => {
-    const execute = vi.fn();
-    const client = new GeminiModelClient({ client: { models: { generateContent: vi.fn() } } });
-    await expect(
-      client.toolLoop!({
-        ...tutorRequest(),
-        thinkingLevel: "medium",
-        tools: [{ id: "records.read", description: "Read one record", inputSchema: { type: "object" } }],
-        execute,
-      }),
-    ).rejects.toMatchObject({ envelope: { code: "gemini_chat_tools_not_allowed", status: 400 } });
-    expect(execute).not.toHaveBeenCalled();
+  it("supports predeclared tools at medium thinking", async () => {
+    const execute = vi.fn().mockResolvedValue({ status: "active" });
+    const generated = vi
+      .fn()
+      .mockResolvedValueOnce({ text: '{"action":"call","toolId":"records.read","input":{"id":"one"}}' })
+      .mockResolvedValueOnce({ text: '{"action":"respond","text":"Active."}' });
+    const client = new GeminiModelClient({ client: { models: { generateContent: generated } } });
+    const result = await client.toolLoop!({
+      ...tutorRequest(),
+      thinkingLevel: "medium",
+      tools: [{ id: "records.read", description: "Read one record", inputSchema: { type: "object" } }],
+      execute,
+    });
+    expect(result.text).toBe("Active.");
+    expect(execute).toHaveBeenCalledOnce();
+    expect(generated.mock.calls[0]?.[0]).toMatchObject({ config: { thinkingConfig: { thinkingLevel: "MEDIUM" } } });
   });
 });
 
@@ -208,6 +231,57 @@ describe("TelegramChannelAdapter", () => {
     await adapter.send(payload!);
     const body = JSON.parse(String((fetch.mock.calls[0]?.[1] as RequestInit | undefined)?.body)) as Record<string, unknown>;
     expect(body).toMatchObject({ parse_mode: "HTML", text: "<b>Result</b>\n<b>Saved</b> &lt;unsafe&gt;" });
+  });
+
+  it("acknowledges structured choices, emits inline controls, and brackets work with typing activity", async () => {
+    const fetch = vi.fn().mockResolvedValue(response({ ok: true, result: { message_id: 90 } }, 200));
+    const adapter = telegram({ fetch, typingRefreshMs: 60_000 });
+    const inbound = await adapter.normalizeInbound({
+      update_id: 92,
+      callback_query: {
+        id: "callback-1",
+        from: { id: 42 },
+        data: "bc:interaction-1:approve",
+        message: { message_id: 8, chat: { id: 42 }, message_thread_id: 3 },
+      },
+    });
+    expect(inbound.interaction).toMatchObject({
+      kind: "choice",
+      interactionId: "interaction-1",
+      optionId: "approve",
+      providerInteractionId: "callback-1",
+    });
+
+    await adapter.acknowledgeInbound(inbound);
+    const activity = await adapter.startActivity(inbound);
+    await activity.stop();
+    const [payload] = await adapter.formatOutbound(outbound({
+      threadId: "42:3",
+      controls: [{
+        id: "interaction-2",
+        field: "answer",
+        prompt: "Choose",
+        options: [{ id: "yes", label: "Yes", value: true }, { id: "no", label: "No", value: false }],
+      }],
+    }));
+    await adapter.send(payload!);
+
+    expect(fetch.mock.calls.map((call) => String(call[0]))).toEqual([
+      expect.stringContaining("/answerCallbackQuery"),
+      expect.stringContaining("/sendChatAction"),
+      expect.stringContaining("/sendMessage"),
+    ]);
+    const delivery = JSON.parse(String((fetch.mock.calls[2]?.[1] as RequestInit | undefined)?.body)) as Record<string, unknown>;
+    expect(delivery).toMatchObject({
+      chat_id: "42",
+      message_thread_id: "3",
+      reply_markup: {
+        inline_keyboard: [[
+          { text: "Yes", callback_data: "bc:interaction-2:yes" },
+          { text: "No", callback_data: "bc:interaction-2:no" },
+        ]],
+      },
+    });
   });
 
   it("retries transient responses and returns the persisted provider message id", async () => {
@@ -291,7 +365,6 @@ function tutorRequest(): TutorModelRequest {
       route: "conversation",
       intent: "explain",
       confidence: 1,
-      needsHighThinking: true,
       speechAct: "question",
       temporalStance: "present",
       targetReferences: [],

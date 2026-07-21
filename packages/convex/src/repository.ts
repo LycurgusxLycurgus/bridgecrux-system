@@ -1,4 +1,6 @@
 import type {
+  ChoiceControl,
+  ChoiceOption,
   CruxReport,
   CruxReportInput,
   CruxStateBundle,
@@ -16,6 +18,8 @@ import type {
   RuntimeMemory,
   RuntimeMessage,
   StateLoadRequest,
+  StructuredInteractionStore,
+  TurnLeaseStore,
 } from "@bridge-crux/core";
 import type { GenericDatabaseWriter } from "convex/server";
 import type { BridgeCruxDataModel } from "./schema.js";
@@ -24,6 +28,7 @@ type Database = GenericDatabaseWriter<BridgeCruxDataModel>;
 type UserId = BridgeCruxDataModel["bridgecruxUsers"]["document"]["_id"];
 type SessionId = BridgeCruxDataModel["bridgecruxSessions"]["document"]["_id"];
 type ProcessRunId = BridgeCruxDataModel["bridgecruxProcessRuns"]["document"]["_id"];
+type InteractionId = BridgeCruxDataModel["bridgecruxInteractions"]["document"]["_id"];
 type ReportId = BridgeCruxDataModel["bridgecruxReports"]["document"]["_id"];
 
 export type DomainStateLoader = (input: {
@@ -457,6 +462,73 @@ export class ConvexBridgeCruxRepository {
     });
   }
 
+  async issueInteraction(input: Parameters<StructuredInteractionStore["issue"]>[0]): Promise<ChoiceControl> {
+    const id = await this.db.insert("bridgecruxInteractions", {
+      userId: input.userId as UserId,
+      sessionId: input.sessionId as SessionId,
+      processRunId: input.processRunId as ProcessRunId,
+      stepId: input.control.stepId ?? input.stepId,
+      field: input.control.field,
+      prompt: input.control.prompt,
+      optionsJson: JSON.stringify(input.control.options),
+      status: "issued",
+      correlationId: input.correlationId,
+      ...(input.control.expiresAt !== undefined ? { expiresAt: input.control.expiresAt } : {}),
+      issuedAt: this.now(),
+    });
+    return { ...input.control, id };
+  }
+
+  async consumeInteraction(input: Parameters<StructuredInteractionStore["consume"]>[0]) {
+    const document = await this.db.get(input.interaction.interactionId as InteractionId);
+    if (!document || document.status !== "issued" || document.userId !== input.userId || document.sessionId !== input.sessionId) return undefined;
+    if (document.expiresAt !== undefined && document.expiresAt <= this.now()) {
+      await this.db.patch(document._id, { status: "expired" });
+      return undefined;
+    }
+    const option = choiceOptions(document.optionsJson).find((candidate) => candidate.id === input.interaction.optionId);
+    if (!option) return undefined;
+    await this.db.patch(document._id, { status: "consumed", consumedAt: this.now() });
+    return {
+      ...input.interaction,
+      processRunId: document.processRunId,
+      stepId: document.stepId,
+      field: document.field,
+      value: option.value,
+    };
+  }
+
+  async acquireTurnLease(input: Parameters<TurnLeaseStore["acquire"]>[0]): Promise<boolean> {
+    const existing = await this.db
+      .query("bridgecruxTurnLeases")
+      .withIndex("by_key", (query) => query.eq("key", input.key))
+      .unique();
+    if (existing && existing.expiresAt > this.now() && existing.correlationId !== input.correlationId) return false;
+    if (existing) {
+      await this.db.patch(existing._id, {
+        correlationId: input.correlationId,
+        expiresAt: input.expiresAt,
+        acquiredAt: this.now(),
+      });
+    } else {
+      await this.db.insert("bridgecruxTurnLeases", {
+        key: input.key,
+        correlationId: input.correlationId,
+        expiresAt: input.expiresAt,
+        acquiredAt: this.now(),
+      });
+    }
+    return true;
+  }
+
+  async releaseTurnLease(input: Parameters<TurnLeaseStore["release"]>[0]): Promise<void> {
+    const existing = await this.db
+      .query("bridgecruxTurnLeases")
+      .withIndex("by_key", (query) => query.eq("key", input.key))
+      .unique();
+    if (existing?.correlationId === input.correlationId) await this.db.delete(existing._id);
+  }
+
   async #ensureUserSession(message: NormalizedInboundMessage, cruxId: string): Promise<{ userId: UserId; sessionId: SessionId }> {
     let user = await this.db
       .query("bridgecruxUsers")
@@ -557,7 +629,6 @@ function toDecisionAudit(document: BridgeCruxDataModel["bridgecruxRouterDecision
       route: document.route,
       intent: document.intent,
       confidence: document.confidence,
-      needsHighThinking: true,
       speechAct: document.speechAct as RouterDecisionAudit["decision"]["speechAct"],
       temporalStance: document.temporalStance as RouterDecisionAudit["decision"]["temporalStance"],
       targetReferences: jsonArray(document.targetReferencesJson),
@@ -615,6 +686,19 @@ function jsonArray(value: string | undefined): RouterDecisionAudit["decision"]["
   try {
     const parsed = JSON.parse(value) as unknown;
     return Array.isArray(parsed) ? (parsed as RouterDecisionAudit["decision"]["targetReferences"]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function choiceOptions(value: string): ChoiceOption[] {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((candidate) => {
+      if (!record(candidate) || typeof candidate["id"] !== "string" || typeof candidate["label"] !== "string" || !("value" in candidate)) return [];
+      return [{ id: candidate["id"], label: candidate["label"], value: candidate["value"] as ChoiceOption["value"] }];
+    });
   } catch {
     return [];
   }

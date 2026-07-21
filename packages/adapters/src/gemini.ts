@@ -122,13 +122,7 @@ export class GeminiModelClient implements ModelClient {
 
   async toolLoop(request: ToolLoopRequest): Promise<ToolLoopResult> {
     if (request.tools.length === 0) return { text: await this.tutor(request), calls: [] };
-    if (request.thinkingLevel === "medium") {
-      throw new BridgeCruxAdapterError({
-        status: 400,
-        code: "gemini_chat_tools_not_allowed",
-        message: "Medium-thinking knowledge-only chat cannot use tools",
-      });
-    }
+    const thinkingLevel = request.thinkingLevel ?? "high";
     const model = request.model ?? this.#defaultModel;
     const allowed = new Map(request.tools.map((tool) => [tool.id, tool]));
     const calls: ToolLoopResult["calls"] = [];
@@ -150,12 +144,12 @@ export class GeminiModelClient implements ModelClient {
             temperature: 0.2,
             responseMimeType: "application/json",
             responseJsonSchema: toolLoopSchema([...allowed.keys()]),
-            thinkingConfig: { thinkingLevel: ThinkingLevel.HIGH },
+            thinkingConfig: { thinkingLevel: toProviderThinkingLevel(thinkingLevel) },
           },
         });
         const selection = parseToolSelection(parseJsonResponse(response.text));
         if (selection.action === "respond") {
-          await this.#record("tool", model, request.correlationId, "high", "succeeded");
+          await this.#record("tool", model, request.correlationId, thinkingLevel, "succeeded");
           return { text: selection.text, calls };
         }
         if (!allowed.has(selection.toolId)) {
@@ -167,9 +161,9 @@ export class GeminiModelClient implements ModelClient {
         }
         const output = await request.execute(selection.toolId, selection.input);
         calls.push({ toolId: selection.toolId, input: selection.input, output });
-        await this.#record("tool", model, request.correlationId, "high", "succeeded");
+        await this.#record("tool", model, request.correlationId, thinkingLevel, "succeeded");
       } catch (error) {
-        await this.#record("tool", model, request.correlationId, "high", "failed");
+        await this.#record("tool", model, request.correlationId, thinkingLevel, "failed");
         if (error instanceof BridgeCruxAdapterError) throw error;
         throw providerError("model", error);
       }
@@ -220,7 +214,7 @@ export class GeminiTaskSignalRouter implements TaskSignalRouter {
       schema: ROUTER_DECISION_SCHEMA,
       correlationId: input.message.correlationId,
       temperature: 0.2,
-      thinkingLevel: "high",
+      thinkingLevel: "medium",
       parse: parseRouterDecision,
     });
   }
@@ -233,7 +227,6 @@ export const ROUTER_DECISION_SCHEMA: JsonValue = {
     "route",
     "intent",
     "confidence",
-    "needsHighThinking",
     "speechAct",
     "temporalStance",
     "targetReferences",
@@ -247,7 +240,6 @@ export const ROUTER_DECISION_SCHEMA: JsonValue = {
     route: { type: "string" },
     intent: { type: "string" },
     confidence: { type: "number", minimum: 0, maximum: 1 },
-    needsHighThinking: { type: "boolean" },
     speechAct: { type: "string", enum: ["question", "announcement", "proposal", "permission", "correction", "confirmation", "execution", "other"] },
     temporalStance: { type: "string", enum: ["past", "present", "future", "hypothetical", "unclear"] },
     targetReferences: { type: "array", items: { type: "object" } },
@@ -282,7 +274,6 @@ function parseRouterDecision(value: unknown): RawRouterDecision {
     if (typeof value[key] !== "string") throw schemaError(`Router output field ${key} must be a string`);
   }
   if (typeof value.confidence !== "number" || value.confidence < 0 || value.confidence > 1) throw schemaError("Router confidence must be between 0 and 1");
-  if (typeof value.needsHighThinking !== "boolean") throw schemaError("Router needsHighThinking must be boolean");
   if (!Array.isArray(value.targetReferences) || !record(value.extracted)) throw schemaError("Router references and extracted fields have invalid shapes");
   if (value.additionalSignals !== undefined && !Array.isArray(value.additionalSignals)) throw schemaError("Router additionalSignals must be an array");
   return value as RawRouterDecision;
@@ -327,8 +318,6 @@ function safeJson(value: unknown): string {
 }
 
 function toProviderThinkingLevel(level: ModelThinkingLevel): ThinkingLevel {
-  if (level === "minimal") return ThinkingLevel.MINIMAL;
-  if (level === "low") return ThinkingLevel.LOW;
   if (level === "medium") return ThinkingLevel.MEDIUM;
   return ThinkingLevel.HIGH;
 }

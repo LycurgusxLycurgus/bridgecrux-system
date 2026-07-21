@@ -20,6 +20,12 @@ inbound transport
 
 Raw model output never authorizes mutation or becomes durable truth. Persisted application state and declared code contracts remain authoritative.
 
+## Activation And Versioned Knowledge
+
+Treat BridgeCrux as versioned repository knowledge that is absent until this skill and the installed package evidence are read. Activate this skill before every nontrivial turn that may inspect, explain, plan, change, debug, validate, or extend BridgeCrux-powered behavior. This includes apparently local application work whenever routing, process execution, model/tool policy, state, copy, delivery, or audit could be affected. If relevance is uncertain, activate the skill and inspect first.
+
+Never complete a BridgeCrux knowledge gap from model memory. Read the installed BridgeCrux version, this skill, the runtime map, the affected public contracts, and the relevant child skill. Re-open them whenever implementation evidence contradicts the current understanding or a required primitive is unfamiliar. Ordinary work proven unrelated to BridgeCrux may proceed without loading the child skills.
+
 ## Inspect Before Editing
 
 Read the target application's package metadata, installed BridgeCrux version, crux content, route registry, bindings, operation registrations, persistence composition, adapters, and affected tests. Check `AGENTS.md` and `CLAUDE.md` for the BridgeCrux managed block. Read [runtime-map.md](references/runtime-map.md) when selecting packages or diagnosing a broken boundary.
@@ -45,9 +51,16 @@ For a stable local runtime defect with an already-correct task surface and canon
 5. Validate raw decisions in code: declared route and intent, speech act, temporal stance, references, required state and fields, mutation evidence, safety, capability-gap eligibility, and composite compatibility.
 6. Dispatch only validated decisions. Filter operations to the validated binding, enforce preconditions and preservation rules, and use durable idempotency for externally retryable mutations.
 7. Persist raw and validated decisions, operation outcomes, ledger events, messages, reports, and deferred work at their declared boundaries.
-8. Generate visible text only from an allowed copy source. Stable deterministic-process surfaces use authored copy without a model call. Knowledge-only chat uses the medium-thinking conversational tutor with no tools. Routing, extraction, ambiguity, partial edits, personalized interpretation, tool use, and every other agentic path use high thinking; a model-proposed `needsHighThinking` value may escalate but never downgrade this runtime policy. Pass candidate text through the user-copy gate.
-9. Default new Gemini integrations to `gemini-3.1-flash-lite` and select its thinking level through configuration rather than inventing model aliases. Keep Gemini and Telegram provider behavior inside adapters. Render outbound Telegram Markdown through the adapter's safe Telegram formatting contract. Provider metadata never substitutes for state, routing, authorization, or audit truth.
-10. Validate one complete real turn from inbound normalization through persisted outcome, truthful copy, delivery result, and audit evidence.
+8. Declare an execution policy for every route and every established process step before users enter it. The runtime, never router output, selects the effective policy:
+   - `deterministic`: code-only after selection. A freeform medium-thinking router may select a predeclared deterministic handler, after which no assessment, tutor, or tool model runs. An already-active deterministic process bypasses routing and makes zero model calls only for server-issued, replay-safe closed choices; typed natural language that resembles a choice is not a trusted selection.
+   - `hybrid`: a predeclared medium- or high-thinking assessment interprets structured or open input, then schema and domain validators exclusively authorize progression. Expose only predeclared tools, and require the declared completion operation before success copy.
+   - `model`: medium thinking for knowledge interaction and high thinking for agentic interaction. The model may answer or use only tools from the validated route binding; every backend operation still passes deterministic authorization, preconditions, idempotency, persistence, and audit.
+9. Route freeform conversation with medium thinking. The validated route may enter a deterministic step, a medium/high hybrid process, or a medium/high model route. Established process difficulty, thinking, completion mode, context, and allowed tools are fixed in its contract before entry and cannot be downgraded or expanded by model output.
+10. Serialize each crux/channel/user/thread turn with an expiring correlation-owned lease. On contention, return a retryable busy result without starting a second model or operation path. Release only the owning correlation in a `finally` boundary.
+10. Give hybrid assessment the active step schema, bounded transcript, process state, and explicitly scoped durable context. Require normalized fields, missing fields, proposed corrections, confidence, and typed reasons. Let domain validators downgrade `ready` to partial, clarification, or rejection; assessment confidence never authorizes persistence.
+11. Generate visible text only from an allowed copy source and pass it through the copy gate. Authored deterministic copy makes no model call. Medium/high model copy receives actual operation results. Success claims require every declared completion operation to have succeeded or resolved idempotently.
+12. Default new Gemini integrations to `gemini-3.1-flash-lite`. Keep model and Telegram behavior inside adapters. Use Telegram-safe HTML, acknowledge structured callbacks, and maintain best-effort typing activity while a noticeable turn is running. Activity failure never changes domain outcome.
+13. Validate one complete real turn from inbound normalization through persisted outcome, truthful copy, structured controls when applicable, delivery result, and audit evidence.
 
 ## Preserve Application Boundaries
 
@@ -76,5 +89,8 @@ Finish only when:
 - mutations require positive evidence, resolved references, satisfied preconditions, and durable idempotency where retries are possible;
 - read-only, clarification, contradiction, and capability-gap turns cannot mutate state;
 - provider errors become structured runtime failures with safe fallback behavior;
+- deterministic observations prove zero router, tutor, assessment, and tool model calls;
+- hybrid/model tools are a subset of the predeclared process or validated route binding;
+- closed choices are server-issued, user/session/step scoped, single-use, and replay safe;
 - focused tests and one whole-turn conformance path pass;
 - the consumer can continue the work from explicit local contracts without rediscovering the architecture.

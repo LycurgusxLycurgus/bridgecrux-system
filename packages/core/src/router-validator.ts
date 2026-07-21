@@ -258,7 +258,6 @@ function validatedSignal(
     route: raw.route,
     intent: raw.intent,
     confidence: raw.confidence,
-    needsHighThinking: raw.needsHighThinking,
     speechAct: raw.speechAct,
     temporalStance: raw.temporalStance,
     targetReferences: raw.targetReferences,

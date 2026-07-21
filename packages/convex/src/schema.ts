@@ -159,6 +159,30 @@ export const bridgeCruxTables = {
     .index("by_process_status", ["processRunId", "status"])
     .index("by_process_item", ["processRunId", "itemId"]),
 
+  bridgecruxInteractions: defineTable({
+    userId: v.id("bridgecruxUsers"),
+    sessionId: v.id("bridgecruxSessions"),
+    processRunId: v.id("bridgecruxProcessRuns"),
+    stepId: v.string(),
+    field: v.string(),
+    prompt: v.string(),
+    optionsJson: v.string(),
+    status: v.union(v.literal("issued"), v.literal("consumed"), v.literal("expired")),
+    correlationId: v.string(),
+    expiresAt: v.optional(v.number()),
+    issuedAt: v.number(),
+    consumedAt: v.optional(v.number()),
+  })
+    .index("by_session_status", ["sessionId", "status"])
+    .index("by_process_step_status", ["processRunId", "stepId", "status"]),
+
+  bridgecruxTurnLeases: defineTable({
+    key: v.string(),
+    correlationId: v.string(),
+    expiresAt: v.number(),
+    acquiredAt: v.number(),
+  }).index("by_key", ["key"]),
+
   bridgecruxMemories: defineTable({
     userId: v.id("bridgecruxUsers"),
     cruxId: v.string(),

@@ -1,5 +1,5 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { basename, join, relative, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import type {
   ContentBuildInput,
@@ -10,11 +10,13 @@ import type {
   ContentManifest,
   ContentValidationContext,
   ContentValidationResult,
+  ContentExecutionPolicy,
   CruxConfig,
-  DeterministicProcessManifest,
+  ProcessManifest,
   DiscoveredContentFile,
   DiscoveredCruxContent,
   FrontmatterBlock,
+  ProcessStepManifest,
   ParsedContentFile,
   ParsedCruxContent,
   SpecificFunctionManifest,
@@ -100,14 +102,14 @@ export function validateCruxContent(input: ParsedCruxContent, context: ContentVa
     }
   }
   if (!input.config) diagnostics.push(error("config_invalid", "crux.config.json is missing or invalid JSON", "crux.config.json"));
-  else validateConfig(input.config, diagnostics);
+  else validateConfig(input.config, context, diagnostics);
 
   const ids = new Set<string>();
   const copyIds = new Set<string>();
   const functions: ParsedContentFile[] = [];
   for (const file of input.files.filter((candidate) => candidate.kind !== "config")) {
     if (file.blocks.length === 0) diagnostics.push(error("frontmatter_missing", "Canonical markdown requires YAML frontmatter", file.relativePath));
-    if (file.kind === "specific_function" && basename(file.relativePath) !== "deterministic-processes.md") functions.push(file);
+    if (file.kind === "specific_function") functions.push(file);
     for (const block of file.blocks) validateBlock(file, block, input.config, context, ids, copyIds, diagnostics);
   }
   if (functions.length === 0) {
@@ -146,7 +148,10 @@ export class ContentBuildError extends Error {
   }
 }
 
-function validateConfig(config: CruxConfig, diagnostics: ContentDiagnostic[]): void {
+function validateConfig(config: CruxConfig, context: ContentValidationContext, diagnostics: ContentDiagnostic[]): void {
+  if (config.schemaVersion !== 2) {
+    diagnostics.push(error("schema_version_removed", "BridgeCrux 0.2.0 requires crux.config.json schemaVersion 2; the 0.1.1 contract was removed", "crux.config.json", "schemaVersion"));
+  }
   if (!string(config.id)) diagnostics.push(error("config_field_invalid", "Config id is required", "crux.config.json", "id"));
   if (!string(config.version)) diagnostics.push(error("config_field_invalid", "Config version is required", "crux.config.json", "version"));
   if (!string(config.locale)) diagnostics.push(error("config_field_invalid", "Config locale is required", "crux.config.json", "locale"));
@@ -161,11 +166,24 @@ function validateConfig(config: CruxConfig, diagnostics: ContentDiagnostic[]): v
   if (!Number.isInteger(config.conversationWindow) || config.conversationWindow <= 0) {
     diagnostics.push(error("conversation_window_invalid", "conversationWindow must be a positive integer", "crux.config.json", "conversationWindow"));
   }
-  if (config.models?.router?.thinking !== "low") {
-    diagnostics.push(error("router_thinking_invalid", "Router thinking must be low", "crux.config.json", "models.router.thinking"));
+  for (const [name, profile] of Object.entries(config.models ?? {})) {
+    if (record(profile) && "thinking" in profile) {
+      diagnostics.push(error("model_thinking_removed", "BridgeCrux 0.2.0 declares thinking in execution policies, not model profiles", "crux.config.json", `models.${name}.thinking`));
+    }
   }
-  if (config.models?.tutor?.thinking !== "high") {
-    diagnostics.push(error("tutor_thinking_invalid", "Tutor thinking must be high", "crux.config.json", "models.tutor.thinking"));
+  if (config.execution?.freeformRouterThinkingLevel !== "medium") {
+    diagnostics.push(error("router_thinking_invalid", "Freeform routing must use medium thinking", "crux.config.json", "execution.freeformRouterThinkingLevel"));
+  }
+  const expectedPolicies = new Set(
+    Object.entries(config.intentRegistry ?? {}).flatMap(([route, intents]) => intents.map((intent) => `${route}/${intent}`)),
+  );
+  for (const key of expectedPolicies) {
+    const policy = config.execution?.routes?.[key];
+    if (!policy) diagnostics.push(error("route_execution_missing", `Missing execution policy for ${key}`, "crux.config.json", `execution.routes.${key}`));
+    else validateExecutionPolicy(policy, context.operationIds, diagnostics, "crux.config.json", `execution.routes.${key}`);
+  }
+  for (const key of Object.keys(config.execution?.routes ?? {})) {
+    if (!expectedPolicies.has(key)) diagnostics.push(error("route_execution_unknown", `Execution policy references undeclared route/intent ${key}`, "crux.config.json", `execution.routes.${key}`));
   }
   if ((config.models?.router?.temperature ?? 0.2) !== 0.2) {
     diagnostics.push(error("router_temperature_invalid", "Router temperature must be 0.2", "crux.config.json", "models.router.temperature"));
@@ -191,10 +209,10 @@ function validateBlock(
   else ids.add(id);
   if (!string(metadata["version"])) diagnostics.push(error("content_version_missing", "Frontmatter version is required", file.relativePath, "version", block.line));
 
-  if (file.kind === "specific_function" || file.kind === "deterministic_process") {
+  if (file.kind === "specific_function" || file.kind === "process") {
     const expectedKind = file.kind;
     if (metadata["kind"] !== expectedKind) diagnostics.push(error("content_kind_invalid", `Expected kind ${expectedKind}`, file.relativePath, "kind", block.line));
-    const routes = strings(metadata[file.kind === "deterministic_process" ? "entry_routes" : "routes"]);
+    const routes = strings(metadata[file.kind === "process" ? "entry_routes" : "routes"]);
     for (const route of routes) {
       if (!config?.routeRegistry.includes(route)) diagnostics.push(error("route_missing", `Undeclared route ${route}`, file.relativePath, "routes", block.line));
     }
@@ -211,10 +229,14 @@ function validateBlock(
       requireArray(metadata, "state_reads", file, block, diagnostics);
       requireArray(metadata, "state_writes", file, block, diagnostics);
     } else {
-      const steps = strings(metadata["steps"]);
-      if (steps.length === 0 || new Set(steps).size !== steps.length) diagnostics.push(error("process_steps_invalid", "Process steps must be non-empty and unique", file.relativePath, "steps", block.line));
-      for (const transition of strings(metadata["transitions"])) {
-        if (!steps.includes(transition)) diagnostics.push(error("process_transition_missing", `Transition references missing step ${transition}`, file.relativePath, "transitions", block.line));
+      const advanceOperationId = metadata["advance_operation"];
+      if (!string(advanceOperationId) || !context.operationIds.includes(advanceOperationId)) diagnostics.push(error("process_advance_operation_invalid", "Process advance_operation must reference a declared operation", file.relativePath, "advance_operation", block.line));
+      const steps = processSteps(metadata["steps"]);
+      const stepIds = steps.map((step) => step.id);
+      if (steps.length === 0 || new Set(stepIds).size !== stepIds.length) diagnostics.push(error("process_steps_invalid", "Process steps must be non-empty, structured, and unique", file.relativePath, "steps", block.line));
+      for (const step of steps) {
+        if (step.nextStepId && !stepIds.includes(step.nextStepId)) diagnostics.push(error("process_transition_missing", `Step ${step.id} references missing step ${step.nextStepId}`, file.relativePath, "steps", block.line));
+        validateProcessStep(step, string(advanceOperationId) ? advanceOperationId : "", context.operationIds, diagnostics, file.relativePath, block.line);
       }
     }
   }
@@ -231,7 +253,7 @@ function createManifest(parsed: ParsedCruxContent): ContentManifest {
   const assistants = parsed.files.find((file) => file.kind === "assistants");
   if (!system || !assistants) throw new Error("Validated content did not contain required prompts");
   const specificFunctions: SpecificFunctionManifest[] = [];
-  const deterministicProcesses: DeterministicProcessManifest[] = [];
+  const processes: ProcessManifest[] = [];
   for (const file of parsed.files) {
     for (const block of file.blocks) {
       if (file.kind === "specific_function") {
@@ -247,12 +269,13 @@ function createManifest(parsed: ParsedCruxContent): ContentManifest {
           source: file.relativePath,
           body: block.body,
         });
-      } else if (file.kind === "deterministic_process") {
-        deterministicProcesses.push({
+      } else if (file.kind === "process") {
+        processes.push({
           id: String(block.metadata["id"]),
           version: String(block.metadata["version"]),
           entryRoutes: strings(block.metadata["entry_routes"]),
-          steps: strings(block.metadata["steps"]),
+          advanceOperationId: String(block.metadata["advance_operation"]),
+          steps: processSteps(block.metadata["steps"]),
           stateReads: strings(block.metadata["state_reads"]),
           stateWrites: strings(block.metadata["state_writes"]),
           allowsDeferral: block.metadata["allows_deferral"] === true,
@@ -263,15 +286,48 @@ function createManifest(parsed: ParsedCruxContent): ContentManifest {
     }
   }
   specificFunctions.sort((left, right) => left.id.localeCompare(right.id));
-  deterministicProcesses.sort((left, right) => left.id.localeCompare(right.id));
+  processes.sort((left, right) => left.id.localeCompare(right.id));
+  const routeChecklist = Object.entries(config.execution.routes)
+    .map(([pathId, execution]) => {
+      const [route = "", intent = ""] = pathId.split("/", 2);
+      return { pathId, route, intent, execution, status: "designed" as const };
+    })
+    .sort((left, right) => left.pathId.localeCompare(right.pathId));
+  const handlerStubs = routeChecklist.map((row) => ({
+    id: `${row.route}-${row.intent}-handler`,
+    route: row.route,
+    intent: row.intent,
+    operationIds: [...row.execution.toolIds],
+  }));
+  const regressionScenarios: ContentManifest["regressionScenarios"] = [
+    ...routeChecklist.map((row) => ({
+      id: `route:${row.pathId}`,
+      kind: "route" as const,
+      expectedMode: row.execution.mode,
+      ...(row.execution.mode !== "deterministic" ? { expectedThinkingLevel: row.execution.thinkingLevel } : {}),
+      expectedToolIds: [...row.execution.toolIds],
+    })),
+    ...processes.flatMap((process) =>
+      process.steps.map((step) => ({
+        id: `process:${process.id}:${step.id}`,
+        kind: "process_step" as const,
+        expectedMode: step.execution.mode,
+        ...(step.execution.mode !== "deterministic" ? { expectedThinkingLevel: step.execution.thinkingLevel } : {}),
+        expectedToolIds: [...step.execution.toolIds],
+      })),
+    ),
+  ];
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     crux: { id: config.id, version: config.version, locale: config.locale },
     config,
     systemPrompt: system.source,
     assistants: assistants.source,
     specificFunctions,
-    deterministicProcesses,
+    processes,
+    routeChecklist,
+    handlerStubs,
+    regressionScenarios,
     generatedAt: "1970-01-01T00:00:00.000Z",
     sourceFiles: parsed.files.map((file) => relative(parsed.root, file.path).replaceAll("\\", "/")).sort(),
   };
@@ -287,11 +343,119 @@ function requireArray(
   if (!Array.isArray(metadata[field])) diagnostics.push(error("content_field_invalid", `${field} must be an array`, file.relativePath, field, block.line));
 }
 
+function processSteps(value: unknown): ProcessStepManifest[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((candidate) => {
+    if (!record(candidate) || !string(candidate["id"]) || !record(candidate["input"]) || !record(candidate["execution"])) return [];
+    const execution = parseExecutionPolicy(candidate["execution"]);
+    const confirmation = candidate["confirmation_policy"];
+    const completionMode = candidate["completion"];
+    if (!execution || (completionMode !== "controller" && completionMode !== "model_tool") || (confirmation !== "never" && confirmation !== "on_correction" && confirmation !== "always")) return [];
+    const input = normalizeProcessInput(candidate["id"], candidate["input"]);
+    if (!input) return [];
+    return [{
+      id: candidate["id"],
+      input,
+      execution,
+      completionMode,
+      ...(string(candidate["next_step"]) ? { nextStepId: candidate["next_step"] } : {}),
+      confirmationPolicy: confirmation,
+      missingFieldQuestions: stringRecord(candidate["missing_field_questions"]),
+    }];
+  });
+}
+
+function normalizeProcessInput(stepId: string, value: Record<string, unknown>): Record<string, unknown> | undefined {
+  const mode = value["mode"];
+  if (mode === "closed_choice") {
+    return {
+      mode,
+      control: {
+        id: stepId,
+        field: value["field"],
+        prompt: value["prompt"],
+        options: value["options"],
+      },
+    };
+  }
+  if (mode === "structured" || mode === "open_text" || mode === "composite") {
+    return { mode, schema: value["schema"], requiredFields: strings(value["required_fields"]) };
+  }
+  return undefined;
+}
+
+function parseExecutionPolicy(value: Record<string, unknown>): ContentExecutionPolicy | undefined {
+  const mode = value["mode"];
+  const toolIds = strings(value["tools"]);
+  if (mode === "deterministic") return toolIds.length === 0 ? { mode, toolIds: [] } : undefined;
+  if (mode !== "hybrid" && mode !== "model") return undefined;
+  const thinkingLevel = value["thinking"];
+  if (thinkingLevel !== "medium" && thinkingLevel !== "high") return undefined;
+  return { mode, thinkingLevel, toolIds };
+}
+
+function validateExecutionPolicy(
+  policy: ContentExecutionPolicy,
+  operationIds: string[],
+  diagnostics: ContentDiagnostic[],
+  file: string,
+  field: string,
+): void {
+  if (policy.mode === "deterministic") {
+    if (policy.toolIds.length > 0) diagnostics.push(error("deterministic_tools_invalid", "Deterministic execution makes zero model calls and exposes no model tools", file, field));
+  } else if (policy.thinkingLevel !== "medium" && policy.thinkingLevel !== "high") {
+    diagnostics.push(error("execution_thinking_invalid", `${policy.mode} execution requires medium or high thinking`, file, field));
+  }
+  for (const toolId of policy.toolIds) {
+    if (!operationIds.includes(toolId)) diagnostics.push(error("execution_tool_missing", `Unknown execution tool ${toolId}`, file, field));
+  }
+}
+
+function validateProcessStep(
+  step: ProcessStepManifest,
+  advanceOperationId: string,
+  operationIds: string[],
+  diagnostics: ContentDiagnostic[],
+  file: string,
+  line: number,
+): void {
+  const field = `steps.${step.id}`;
+  validateExecutionPolicy(step.execution, operationIds, diagnostics, file, field);
+  const mode = step.input["mode"];
+  if (step.execution.mode === "model") diagnostics.push(error("process_model_mode_invalid", "Established processes use deterministic or hybrid execution; model mode belongs to freeform routes", file, field, line));
+  if (step.execution.mode === "deterministic" && step.completionMode !== "controller") diagnostics.push(error("deterministic_completion_invalid", "Deterministic process steps require controller completion", file, field, line));
+  if (step.completionMode === "model_tool" && (step.execution.mode !== "hybrid" || !step.execution.toolIds.includes(advanceOperationId))) diagnostics.push(error("model_tool_completion_invalid", `Model-tool completion requires a hybrid step exposing ${advanceOperationId}`, file, field, line));
+  if (step.execution.mode === "deterministic") {
+    if (mode !== "closed_choice") diagnostics.push(error("deterministic_input_invalid", "Deterministic process steps require closed_choice input", file, field, line));
+    const control = record(step.input["control"]) ? step.input["control"] : {};
+    const options = Array.isArray(control["options"]) ? control["options"].filter(record) : [];
+    const optionIds = options.flatMap((option) => string(option["id"]) ? [option["id"]] : []);
+    if (!string(control["field"]) || !string(control["prompt"]) || options.length < 2 || new Set(optionIds).size !== options.length) {
+      diagnostics.push(error("closed_choice_invalid", "Closed-choice input requires field, prompt, and at least two unique id/label/value options", file, field, line));
+    }
+    for (const option of options) {
+      if (!string(option["label"]) || !("value" in option)) diagnostics.push(error("closed_choice_option_invalid", `Step ${step.id} has an invalid choice option`, file, field, line));
+    }
+    return;
+  }
+  if (mode !== "structured" && mode !== "open_text" && mode !== "composite") {
+    diagnostics.push(error("hybrid_input_invalid", "Hybrid process steps require structured, open_text, or composite input", file, field, line));
+  }
+  if (!record(step.input["schema"]) || !stringArray(step.input["requiredFields"])) {
+    diagnostics.push(error("hybrid_schema_invalid", "Hybrid process input requires a schema and required_fields", file, field, line));
+  }
+}
+
+function stringRecord(value: unknown): Record<string, string> {
+  if (!record(value)) return {};
+  return Object.fromEntries(Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
+}
+
 function kind(relativePath: string): ContentFileKind {
   if (relativePath === "crux.config.json") return "config";
   if (relativePath === "system.prompt.md") return "system";
   if (relativePath === "assistants.md") return "assistants";
-  if (relativePath === "specific-functions/deterministic-processes.md") return "deterministic_process";
+  if (relativePath === "specific-functions/processes.md") return "process";
   return "specific_function";
 }
 

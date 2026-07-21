@@ -23,7 +23,7 @@ Raw model output never authorizes mutation or becomes application truth.
 
 ## Install In An Application
 
-BridgeCrux `0.1.x` is ESM-only and requires Node.js 22 or newer.
+BridgeCrux `0.2.x` is ESM-only and requires Node.js 22 or newer.
 
 ```bash
 npm install @bridge-crux/kit convex
@@ -49,13 +49,66 @@ npx bridgecrux doctor --project .
 
 Use `$use-bridgecrux-primitives` for any BridgeCrux-related agentic-app work. It coordinates `$anticipate-crux-routes` for the executable task surface and `$write-crux-prompts` for canonical content.
 
-New Gemini integrations default to the stable `gemini-3.1-flash-lite` model.
-BridgeCrux uses high thinking for routing and all other agentic behavior,
-medium thinking only for explicitly configured knowledge-only chat routes with
-no tools, and no model call for stable authored deterministic-process copy.
-Telegram output is converted from ordinary Markdown into Telegram-safe HTML so
-headings, emphasis, lists, links, quotations, and code render instead of leaking
-raw Markdown syntax.
+New Gemini integrations default to `gemini-3.1-flash-lite`. Freeform conversation
+uses a medium-thinking router, then code enforces the selected route's declared
+execution policy:
+
+- `deterministic`: code-only after routing, or a trusted server-issued closed
+  choice inside an active process; active structured turns make zero model calls;
+- `hybrid`: a medium- or high-thinking model interprets open input and may use
+  only the process-scoped tools, while code validates and authorizes effects;
+- `model`: medium thinking for knowledge/simple work or high thinking for
+  agentic work, with only the route-scoped tools.
+
+An established process fixes its mode, thinking level, tool allowlist,
+confirmation policy, and completion authority before the user enters it.
+Telegram output is rendered as safe HTML, typing activity is refreshed while a
+turn runs, and inline process choices use acknowledged, server-validated,
+single-use callbacks. Ordinary interaction remains freeform chat; choices appear
+only where a declared process requires a closed selection.
+
+## Upgrade An Existing Application
+
+Review the [changelog](CHANGELOG.md), choose one target version for both the
+runtime and skills, then update and refresh the project-local installation. For
+the current release:
+
+```bash
+npm install @bridge-crux/kit@0.2.0
+npx @bridge-crux/skills@0.2.0 install --target ./.codex/skills --project .
+npx bridgecrux --version
+npx bridgecrux doctor --project .
+```
+
+For a future release that has already been reviewed, replace `@0.2.0` with
+`@latest` in both install commands. Keep runtime and skills on the same version;
+do not mix an exact runtime with latest skills or the reverse.
+
+The installer replaces only the three managed BridgeCrux skill directories and
+refreshes the bounded block in `AGENTS.md` or `CLAUDE.md` without duplicating it.
+Run the application's own test and build commands, review the lockfile, installed
+skills, managed instruction block, and release-specific migration notes, then
+commit them according to the application's repository policy.
+
+Applications that import individual BridgeCrux packages should update only
+those declared packages, all to the same target version. Do not add every
+internal package when `@bridge-crux/kit` already provides the supported umbrella.
+See the complete [upgrade and rollback procedure](docs/installation.md#upgrade-an-existing-application).
+
+### Migrating From 0.1.1
+
+Version 0.2.0 deliberately removes the 0.1.1 content and process contracts; it
+does not retain a compatibility parser. Before building, migrate every crux to
+`schemaVersion: 2`, move model thinking settings into `execution.routes`, set
+`execution.freeformRouterThinkingLevel` to `medium`, rename
+`specific-functions/deterministic-processes.md` to
+`specific-functions/processes.md`, use `kind: process`, and define structured
+per-step input, execution, completion, confirmation, and missing-field
+contracts. Runtime integrations must replace the old deterministic-process API
+names with `ProcessDefinition`, `ProcessController`, `ProcessRegistry`, and
+`DefaultProcessController`, declare an `executionPolicy` on every binding, and
+supply turn leases plus structured-interaction persistence. See the
+[0.2 migration checklist](docs/installation.md#migrate-011-to-020).
 
 ## Develop This Repository
 
@@ -70,7 +123,7 @@ npm run build
 npm run test:live
 ```
 
-See [installation](docs/installation.md), [authoring](docs/authoring.md), [conformance](docs/conformance.md), [releasing](docs/releasing.md), [stability](docs/stability.md), and the [standardized repository handoff](docs/standardized-repo-handoff.md).
+See the [changelog](CHANGELOG.md), [installation](docs/installation.md), [authoring](docs/authoring.md), [conformance](docs/conformance.md), [releasing](docs/releasing.md), and [stability](docs/stability.md).
 
 ## License
 

@@ -35,7 +35,16 @@ describe("canonical content builder", () => {
     const second = await buildCruxContent({ root: fixture, operationIds: operations, outputDirectory: output });
     const repeated = await readFile(join(output, "manifest.generated.json"), "utf8");
     expect(first.manifest.specificFunctions).toHaveLength(1);
-    expect(first.manifest.deterministicProcesses).toHaveLength(1);
+    expect(first.manifest.processes).toHaveLength(1);
+    expect(first.manifest.schemaVersion).toBe(2);
+    expect(first.manifest.routeChecklist).toHaveLength(3);
+    expect(first.manifest.handlerStubs).toHaveLength(3);
+    expect(first.manifest.regressionScenarios).toHaveLength(5);
+    expect(first.manifest.processes[0]?.steps[0]).toMatchObject({
+      id: "collect",
+      input: { mode: "closed_choice", control: { field: "answer" } },
+      execution: { mode: "deterministic", toolIds: [] },
+    });
     expect(second.manifest).toEqual(first.manifest);
     expect(repeated).toBe(initial);
   });
@@ -71,5 +80,23 @@ describe("canonical content builder", () => {
     const result = validateCruxContent(parsed, { operationIds: operations });
     expect(result.ok).toBe(false);
     expect(result.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: "content_id_duplicate" })]));
+  });
+
+  it("rejects removed 0.1.1 config contracts with migration diagnostics", async () => {
+    const parsed = await parseCruxContent(await discoverCruxContent(fixture));
+    parsed.config = {
+      ...parsed.config!,
+      schemaVersion: 1,
+      models: {
+        ...parsed.config!.models,
+        router: { ...parsed.config!.models.router, thinking: "low" },
+      },
+    } as never;
+    const result = validateCruxContent(parsed, { operationIds: operations });
+    expect(result.ok).toBe(false);
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "schema_version_removed" }),
+      expect.objectContaining({ code: "model_thinking_removed" }),
+    ]));
   });
 });

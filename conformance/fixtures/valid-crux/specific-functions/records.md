@@ -2,7 +2,7 @@
 id: neutral-records
 kind: specific_function
 title: Neutral Records
-version: 0.1.0
+version: 0.2.0
 routes:
   - records
 intents:

@@ -1,6 +1,7 @@
 {
+  "schemaVersion": 2,
   "id": "neutral-conformance",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "locale": "en",
   "routeRegistry": ["records", "conversation"],
   "intentRegistry": {
@@ -13,13 +14,19 @@
     "router": {
       "provider": "test",
       "model": "structured-test",
-      "thinking": "low",
       "temperature": 0.2
     },
     "tutor": {
       "provider": "test",
-      "model": "tutor-test",
-      "thinking": "high"
+      "model": "tutor-test"
+    }
+  },
+  "execution": {
+    "freeformRouterThinkingLevel": "medium",
+    "routes": {
+      "records/inspect": { "mode": "model", "thinkingLevel": "medium", "toolIds": ["records.inspect"] },
+      "records/complete": { "mode": "hybrid", "thinkingLevel": "high", "toolIds": ["records.complete"] },
+      "conversation/unsupported_execution": { "mode": "model", "thinkingLevel": "medium", "toolIds": [] }
     }
   },
   "channels": ["test"],

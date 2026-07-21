@@ -16,6 +16,16 @@ export type MutationEvidence = "positive" | "insufficient" | "negative";
 export type SafetyFlag = "none" | "possible" | "urgent";
 export type ValidationStatus = "accepted" | "corrected" | "clarification" | "blocked";
 export type CompositeStatus = "single" | "compatible" | "clarification" | "partially_blocked";
+export type TurnExecutionMode = "deterministic" | "hybrid" | "model";
+export type ModelThinkingLevel = "medium" | "high";
+
+export type ExecutionPolicy =
+  | { mode: "deterministic"; thinkingLevel?: never; toolIds: [] }
+  | { mode: "hybrid" | "model"; thinkingLevel: ModelThinkingLevel; toolIds: string[] };
+
+export type ProcessExecutionPolicy =
+  | { mode: "deterministic"; thinkingLevel?: never; toolIds: [] }
+  | { mode: "hybrid"; thinkingLevel: ModelThinkingLevel; toolIds: string[] };
 
 export type RuntimeCapabilityGapType =
   | "software_capability"
@@ -33,7 +43,8 @@ export type AuditDefectType =
   | "guard_divergence"
   | "composite_coverage"
   | "handler_binding"
-  | "extractor_binding";
+  | "extractor_binding"
+  | "execution_policy";
 
 export type TargetReference = {
   raw: string;
@@ -51,7 +62,6 @@ export type RawTaskSignalDecision = {
   route: string;
   intent: string;
   confidence: number;
-  needsHighThinking: boolean;
   speechAct: SpeechAct;
   temporalStance: TemporalStance;
   targetReferences: TargetReference[];
@@ -187,12 +197,27 @@ export type RouterDecisionAudit = {
   createdAt: number;
 };
 
-export type ActiveDeterministicProcess = {
+export type ActiveProcess = {
   processId: string;
   version: string;
   runId: string;
   activeStepId: string;
   state: Record<string, unknown>;
+};
+
+export type StructuredChoiceInteraction = {
+  kind: "choice";
+  interactionId: string;
+  optionId: string;
+  providerInteractionId?: string;
+  providerMessageId?: string;
+};
+
+export type TrustedChoiceInteraction = StructuredChoiceInteraction & {
+  processRunId: string;
+  stepId: string;
+  field: string;
+  value: JsonValue;
 };
 
 export type ActiveSpecificFunction = {
@@ -219,7 +244,7 @@ export type CruxStateBundle = {
   ledgerSummary: LedgerSummary;
   recentRouterDecisions: RouterDecisionAudit[];
   availableState: string[];
-  activeProcess?: ActiveDeterministicProcess;
+  activeProcess?: ActiveProcess;
   activeSpecificFunction?: ActiveSpecificFunction;
   deferredItems?: DeferredProcessItem[];
   domainState?: unknown;
@@ -235,6 +260,7 @@ export type NormalizedInboundMessage = {
   timestamp: number;
   idempotencyKey: string;
   correlationId: string;
+  interaction?: StructuredChoiceInteraction;
   raw?: unknown;
 };
 
@@ -366,6 +392,7 @@ export type HandlerBinding = {
   allowedMutationClasses: string[];
   requiredState: string[];
   operationIds: string[];
+  executionPolicy: ExecutionPolicy;
   copySources: UserCopySource[];
   auditEvents: string[];
 };
@@ -427,6 +454,24 @@ export type ResponsePlan = {
   tutorInstruction?: string;
   fallbackText: string;
   successClaims: string[];
+  requiredOperationIds?: string[];
+  controls?: ChoiceControl[];
+  toolIds?: string[];
+};
+
+export type ChoiceOption = {
+  id: string;
+  label: string;
+  value: JsonValue;
+};
+
+export type ChoiceControl = {
+  id: string;
+  stepId?: string;
+  field: string;
+  prompt: string;
+  options: ChoiceOption[];
+  expiresAt?: number;
 };
 
 export type OperationPlan = {
@@ -494,25 +539,75 @@ export type SpecificFunctionController = {
 };
 
 export type ProcessAssessment = {
-  status: "accept" | "reject" | "partial" | "clarify";
+  status: "ready" | "reject" | "partial" | "clarify";
   normalizedFields?: Record<string, unknown>;
   targetStepId: string;
   canAdvance: boolean;
-  missing: string[];
+  missingFields: string[];
+  proposedCorrections: { field: string; proposedValue: unknown; reason: string }[];
+  confidence: number;
+  reasonCodes: string[];
 };
 
 export type ProcessTurnInput = HandlerInput & {
-  process: ActiveDeterministicProcess;
+  process: ActiveProcess;
 };
 
 export type ValidatedProcessInput = ProcessTurnInput & {
   assessment: ProcessAssessment;
 };
 
-export type DeterministicProcessController = {
+export type ProcessController = {
   readonly id: string;
+  readonly route: string;
+  readonly intent: string;
+  readonly handlerId: string;
+  executionPolicy(process: ActiveProcess): ProcessExecutionPolicy;
   assess(input: ProcessTurnInput): Promise<ProcessAssessment>;
   plan(input: ValidatedProcessInput): Promise<HandlerResult>;
+};
+
+export type ProcessInputContract =
+  | { mode: "closed_choice"; control: ChoiceControl }
+  | { mode: "structured" | "open_text" | "composite"; schema: JsonValue; requiredFields: string[] };
+
+export type ProcessStepContract = {
+  id: string;
+  input: ProcessInputContract;
+  executionPolicy: ProcessExecutionPolicy;
+  completionMode: "controller" | "model_tool";
+  nextStepId?: string;
+  confirmationPolicy: "never" | "on_correction" | "always";
+  missingFieldQuestions: Record<string, string>;
+};
+
+export type ProcessDefinition = {
+  id: string;
+  version: string;
+  route: string;
+  intent: string;
+  handlerId: string;
+  steps: ProcessStepContract[];
+  advanceOperationId: string;
+  authoredCopy: Record<ProcessAssessment["status"], string>;
+};
+
+export type ProcessAssessmentRequest = {
+  input: ProcessTurnInput;
+  step: ProcessStepContract;
+  allowedContext: Record<string, unknown>;
+};
+
+export type ProcessAssessmentHook = {
+  assess(request: ProcessAssessmentRequest): Promise<ProcessAssessment>;
+};
+
+export type ProcessAssessmentValidator = {
+  validate(input: {
+    assessment: ProcessAssessment;
+    turn: ProcessTurnInput;
+    step: ProcessStepContract;
+  }): ProcessAssessment;
 };
 
 export type StructuredModelRequest<T> = {
@@ -539,12 +634,18 @@ export type TutorModelRequest = {
   thinkingLevel?: "medium" | "high";
 };
 
-export type ModelThinkingLevel = "minimal" | "low" | "medium" | "high";
-
 export type ToolDefinition = {
   id: string;
   description: string;
   inputSchema: JsonValue;
+};
+
+export type ToolOperationBinding = {
+  definition: ToolDefinition;
+  operation(input: {
+    arguments: Record<string, unknown>;
+    handler: HandlerInput;
+  }): CruxOperation;
 };
 
 export type ToolLoopRequest = TutorModelRequest & {
@@ -575,6 +676,7 @@ export type OutboundMessage = {
   intent?: string;
   correlationId: string;
   createdAt: number;
+  controls?: ChoiceControl[];
 };
 
 export type ChannelOutboundPayload = {
@@ -583,6 +685,7 @@ export type ChannelOutboundPayload = {
   text: string;
   replyTo?: string;
   correlationId: string;
+  controls?: ChoiceControl[];
 };
 
 export type ChannelSendResult = {
@@ -596,6 +699,33 @@ export type ChannelAdapter = {
   normalizeInbound(event: unknown): Promise<NormalizedInboundMessage>;
   formatOutbound(message: OutboundMessage): Promise<ChannelOutboundPayload[]>;
   send(payload: ChannelOutboundPayload): Promise<ChannelSendResult>;
+  acknowledgeInbound?(message: NormalizedInboundMessage): Promise<void>;
+  startActivity?(message: NormalizedInboundMessage): Promise<ChannelActivityHandle>;
+};
+
+export type ChannelActivityHandle = {
+  stop(): Promise<void>;
+};
+
+export type StructuredInteractionStore = {
+  issue(input: {
+    control: ChoiceControl;
+    userId: string;
+    sessionId: string;
+    processRunId: string;
+    stepId: string;
+    correlationId: string;
+  }): Promise<ChoiceControl>;
+  consume(input: {
+    interaction: StructuredChoiceInteraction;
+    userId: string;
+    sessionId: string;
+  }): Promise<TrustedChoiceInteraction | undefined>;
+};
+
+export type TurnLeaseStore = {
+  acquire(input: { key: string; correlationId: string; expiresAt: number }): Promise<boolean>;
+  release(input: { key: string; correlationId: string }): Promise<void>;
 };
 
 export type CopyGateInput = {
@@ -603,6 +733,7 @@ export type CopyGateInput = {
   text: string;
   operationResults: OperationResult[];
   successClaims: string[];
+  requiredOperationIds?: string[];
   locale?: string;
   maxLength?: number;
 };
@@ -761,6 +892,8 @@ export type RuntimePorts = {
   jobs: RuntimeJobQueue;
   model: ModelClient;
   channel: ChannelAdapter;
+  turns: TurnLeaseStore;
+  interactions?: StructuredInteractionStore;
   feedback?: FeedbackExporter;
 };
 
@@ -779,7 +912,7 @@ export type TurnResult = {
   decision?: ValidatedRouterDecision;
   operationResults: OperationResult[];
   outbound?: PersistedMessage;
-  status: "completed" | "duplicate" | "clarification" | "failed";
+  status: "completed" | "duplicate" | "busy" | "clarification" | "failed";
   error?: RuntimeErrorEnvelope;
 };
 

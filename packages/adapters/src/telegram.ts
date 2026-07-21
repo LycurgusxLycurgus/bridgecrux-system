@@ -2,6 +2,7 @@ import type {
   ChannelAdapter,
   ChannelOutboundPayload,
   ChannelSendResult,
+  ChoiceControl,
   JsonValue,
   NormalizedInboundMessage,
   OutboundMessage,
@@ -18,6 +19,8 @@ export type TelegramChannelAdapterOptions = {
   maxAttempts?: number;
   retryDelay?: (milliseconds: number) => Promise<void>;
   formatting?: "html" | "plain";
+  typingRefreshMs?: number;
+  activityEnabled?: boolean;
 };
 
 export class TelegramChannelAdapter implements ChannelAdapter {
@@ -30,6 +33,8 @@ export class TelegramChannelAdapter implements ChannelAdapter {
   readonly #maxAttempts: number;
   readonly #retryDelay: (milliseconds: number) => Promise<void>;
   readonly #formatting: "html" | "plain";
+  readonly #typingRefreshMs: number;
+  readonly #activityEnabled: boolean;
 
   constructor(options: TelegramChannelAdapterOptions = {}) {
     const token = options.token ?? process.env.TELEGRAM_BOT_TOKEN;
@@ -42,10 +47,13 @@ export class TelegramChannelAdapter implements ChannelAdapter {
     this.#maxAttempts = options.maxAttempts ?? 3;
     this.#retryDelay = options.retryDelay ?? ((milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
     this.#formatting = options.formatting ?? "html";
+    this.#typingRefreshMs = options.typingRefreshMs ?? 4_000;
+    this.#activityEnabled = options.activityEnabled ?? true;
   }
 
   async normalizeInbound(event: unknown): Promise<NormalizedInboundMessage> {
     if (!record(event) || !integer(event.update_id)) throw invalidUpdate("Telegram update_id is required");
+    if (record(event.callback_query)) return normalizeCallbackQuery(event.update_id, event.callback_query, this.channel);
     const message = selectMessage(event);
     if (!message || !integer(message.message_id) || !record(message.chat) || !numberOrString(message.chat.id)) {
       throw invalidUpdate("Telegram message and chat identifiers are required");
@@ -70,12 +78,14 @@ export class TelegramChannelAdapter implements ChannelAdapter {
 
   async formatOutbound(message: OutboundMessage): Promise<ChannelOutboundPayload[]> {
     const destination = message.threadId?.split(":", 1)[0] ?? message.userId;
-    return splitTelegramText(message.text, this.#maxLength).map((text) => ({
+    const chunks = splitTelegramText(message.text, this.#maxLength);
+    return chunks.map((text, index) => ({
       channel: this.channel,
       destination,
       text: this.#formatting === "html" ? formatTelegramHtml(text) : text,
       ...(message.threadId?.includes(":") ? { replyTo: message.threadId.split(":")[1] } : {}),
       correlationId: message.correlationId,
+      ...(index === chunks.length - 1 && message.controls?.length ? { controls: message.controls } : {}),
     }));
   }
 
@@ -92,6 +102,7 @@ export class TelegramChannelAdapter implements ChannelAdapter {
             text: payload.text,
             ...(this.#formatting === "html" ? { parse_mode: "HTML" } : {}),
             ...(payload.replyTo ? { message_thread_id: payload.replyTo } : {}),
+            ...(payload.controls?.length ? { reply_markup: telegramKeyboard(payload.controls) } : {}),
           }),
         });
         const body = await readJson(response);
@@ -119,6 +130,45 @@ export class TelegramChannelAdapter implements ChannelAdapter {
       }
     }
     return { status: "failed", error: lastError ?? transportError("telegram_delivery_failed", "Telegram delivery failed", 502, false) };
+  }
+
+  async acknowledgeInbound(message: NormalizedInboundMessage): Promise<void> {
+    const callbackQueryId = message.interaction?.providerInteractionId;
+    if (!callbackQueryId) return;
+    const response = await this.#fetch(`${this.#baseUrl}/bot${this.#token}/answerCallbackQuery`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ callback_query_id: callbackQueryId }),
+    });
+    if (!response.ok) throw new Error(`Telegram callback acknowledgement failed with HTTP ${response.status}`);
+  }
+
+  async startActivity(message: NormalizedInboundMessage) {
+    if (!this.#activityEnabled) return { stop: async () => undefined };
+    const destination = message.threadId?.split(":", 1)[0] ?? message.userExternalId;
+    const replyTo = message.threadId?.includes(":") ? message.threadId.split(":")[1] : undefined;
+    let stopped = false;
+    const refresh = async () => {
+      if (stopped) return;
+      try {
+        await this.#fetch(`${this.#baseUrl}/bot${this.#token}/sendChatAction`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ chat_id: destination, action: "typing", ...(replyTo ? { message_thread_id: replyTo } : {}) }),
+        });
+      } catch {
+        // Activity is best-effort and must never fail the user turn.
+      }
+    };
+    await refresh();
+    const timer = setInterval(() => void refresh(), this.#typingRefreshMs);
+    timer.unref();
+    return {
+      stop: async () => {
+        stopped = true;
+        clearInterval(timer);
+      },
+    };
   }
 }
 
@@ -214,6 +264,58 @@ function escapeHtml(value: string): string {
 
 function escapeHtmlAttribute(value: string): string {
   return escapeHtml(value).replaceAll('"', "&quot;");
+}
+
+function normalizeCallbackQuery(updateId: number, callback: Record<string, unknown>, channel: string): NormalizedInboundMessage {
+  if (typeof callback.id !== "string" || !record(callback.from) || !numberOrString(callback.from.id)) {
+    throw invalidUpdate("Telegram callback query and sender identifiers are required");
+  }
+  if (!record(callback.message) || !integer(callback.message.message_id) || !record(callback.message.chat) || !numberOrString(callback.message.chat.id)) {
+    throw invalidUpdate("Telegram callback message and chat identifiers are required");
+  }
+  if (typeof callback.data !== "string") throw invalidUpdate("Telegram callback data is required");
+  const interaction = parseChoiceCallback(callback.data);
+  if (!interaction) throw invalidUpdate("Telegram callback is not a BridgeCrux structured choice");
+  const chatId = String(callback.message.chat.id);
+  const threadId = numberOrString(callback.message.message_thread_id) ? String(callback.message.message_thread_id) : undefined;
+  return {
+    id: callback.id,
+    userExternalId: String(callback.from.id),
+    threadId: threadId ? `${chatId}:${threadId}` : chatId,
+    channel,
+    text: "",
+    attachments: [],
+    timestamp: Date.now(),
+    idempotencyKey: `telegram:update:${updateId}`,
+    correlationId: `telegram:${updateId}:${callback.id}`,
+    interaction: {
+      kind: "choice",
+      ...interaction,
+      providerInteractionId: callback.id,
+      providerMessageId: String(callback.message.message_id),
+    },
+  };
+}
+
+function parseChoiceCallback(value: string): { interactionId: string; optionId: string } | undefined {
+  const match = value.match(/^bc:([A-Za-z0-9_-]+):([A-Za-z0-9_-]+)$/u);
+  return match?.[1] && match[2] ? { interactionId: match[1], optionId: match[2] } : undefined;
+}
+
+function telegramKeyboard(controls: ChoiceControl[]) {
+  const buttons = controls.flatMap((control) =>
+    control.options.map((option) => {
+      if (!/^[A-Za-z0-9_-]+$/u.test(control.id) || !/^[A-Za-z0-9_-]+$/u.test(option.id)) {
+        throw new Error("Telegram choice ids may contain only letters, numbers, underscore, and hyphen");
+      }
+      const callbackData = `bc:${control.id}:${option.id}`;
+      if (Buffer.byteLength(callbackData, "utf8") > 64) throw new Error("Telegram choice callback data exceeds 64 bytes");
+      return { text: option.label, callback_data: callbackData };
+    }),
+  );
+  const inline_keyboard: { text: string; callback_data: string }[][] = [];
+  for (let index = 0; index < buttons.length; index += 2) inline_keyboard.push(buttons.slice(index, index + 2));
+  return { inline_keyboard };
 }
 
 function selectMessage(update: Record<string, unknown>): Record<string, unknown> | undefined {

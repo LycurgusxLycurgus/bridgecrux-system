@@ -11,7 +11,6 @@ export const rawTaskSignalValidator = v.object({
   route: v.string(),
   intent: v.string(),
   confidence: v.number(),
-  needsHighThinking: v.boolean(),
   speechAct: v.union(
     v.literal("question"),
     v.literal("announcement"),

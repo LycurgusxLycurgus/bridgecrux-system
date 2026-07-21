@@ -1,7 +1,7 @@
 ---
 name: neutral-conformance-assistants
 description: Route neutral task signals through validated operations.
-version: 0.1.0
+version: 0.2.0
 ---
 
 # Neutral Conformance Assistant Behavior

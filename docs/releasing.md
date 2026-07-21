@@ -7,7 +7,7 @@ release unless the user explicitly assigns them the release-operator role.
 
 ## Current Release State
 
-As of 2026-07-20:
+As of 2026-07-21:
 
 - npm organization and scope: `bridge-crux` / `@bridge-crux`
 - dedicated npm release team: `bridge-crux:bridgecrux`
@@ -17,8 +17,8 @@ As of 2026-07-20:
 - all six public packages: published at synchronized version `0.1.1` under
   `latest` by GitHub Actions run
   [`29773380080`](https://github.com/LycurgusxLycurgus/bridgecrux-system/actions/runs/29773380080)
-- dedicated `bridgecrux` team access: owner-reported read/write on all six
-  packages; direct post-release verification requires an authenticated npm session
+- dedicated `bridgecrux` team access: verified read/write on all six packages;
+  `bridgecrux` is the sole member of `bridge-crux:bridgecrux`
 - default `developers` team access: also read/write on all six packages
 - clean consumer installation: confirmed for `0.1.1`, including project-local
   `.codex/skills`, one managed instruction block, and `bridgecrux doctor`
@@ -26,6 +26,12 @@ As of 2026-07-20:
   GitHub Actions OIDC without a local npm token
 - provenance limitation: npm generated no attestations for `0.1.1` because the
   GitHub repository is private; npm provenance requires a public source repository
+
+The repository working release candidate is `0.2.0`. It is a breaking schema-2
+release with an explicit migration guide. Before trusted publication, the
+repository must be made public so npm can generate provenance; public visibility
+exposes source, history, and Actions logs. The repository secret/history audit
+for this transition found no credential-shaped values or Actions artifacts.
 
 The npm organization owns the package names. The dedicated npm team controls
 human access. GitHub Actions publishes through short-lived npm OIDC credentials;
@@ -76,24 +82,23 @@ packages and revoke any obsolete npm automation tokens.
 
 Start from a clean, current `main` checkout. Read `docs/stability.md`, the changes
 since the previous release, and the current npm versions. Choose one semantic
-version for all six packages; BridgeCrux `0.1.x` does not release workspaces at
-independent versions.
+version for all six packages; BridgeCrux does not release workspaces at
+independent versions. For 0.2.0, read `CHANGELOG.md` and the migration section in
+`docs/installation.md` before preparing the release.
 
 ```bash
 git switch main
 git pull --ff-only
 git status --short
-npm ci
-npm run release:version -- 0.1.1
-npm run release:verify -- 0.1.1
-npm run build
-git diff --check
+npm run release:prepare -- 0.2.0
 git diff
 ```
 
-Replace `0.1.1` with the intended exact version. `release:version` updates the
-root manifest, all six workspace manifests, all internal BridgeCrux dependency
-versions, and `package-lock.json`. It does not commit, tag, push, or publish.
+`release:prepare` performs a clean dependency install, synchronizes the root and
+six workspace manifests plus internal dependencies and `BRIDGECRUX_VERSION`,
+verifies release metadata, runs the complete build and conformance gate, reruns
+the packed clean-consumer installation, and finishes with `git diff --check`.
+It does not commit, tag, push, change repository visibility, or publish.
 
 Review every changed file. The release commit should contain only the intended
 framework changes, release metadata, and operator documentation. Then commit and
@@ -101,6 +106,13 @@ push the release state to `main` using the repository's normal reviewed GitHub
 flow.
 
 ## Publishing Through GitHub Actions
+
+The repository must be public before dispatching the workflow when provenance is
+part of the completion contract. Confirm visibility with:
+
+```bash
+gh repo view LycurgusxLycurgus/bridgecrux-system --json visibility
+```
 
 1. Open the GitHub repository.
 2. Select **Actions → publish npm packages → Run workflow**.
@@ -125,7 +137,20 @@ version merely to conceal a partial release.
 
 ## Post-Publish Verification
 
-Verify registry versions and dedicated team access:
+Run the exact-version verifier from an npm-authenticated operator checkout:
+
+```bash
+npm run release:verify-published -- 0.2.0 latest
+```
+
+This command verifies all six registry versions and the requested distribution
+tag, checks `bridge-crux:bridgecrux` read/write access, creates a temporary clean
+consumer, installs exact kit and skills packages plus Convex, installs all three
+project-local skills, runs the exact CLI version and doctor checks, validates one
+bounded managed instruction block, verifies SLSA provenance for all six packages
+with `npm audit signatures`, and removes the temporary consumer.
+
+For manual diagnosis, verify registry versions and dedicated team access with:
 
 ```bash
 npm view @bridge-crux/core version
@@ -137,23 +162,35 @@ npm view @bridge-crux/skills version
 npm access list packages bridge-crux:bridgecrux --json
 ```
 
-In a fresh directory outside this repository, verify the public consumer path:
+If the automated verifier fails in the consumer step, reproduce manually in a
+fresh directory outside this repository:
 
 ```bash
 npm init -y
-npm install @bridge-crux/kit convex
-npx @bridge-crux/skills install --target <agent-skill-root> --project .
+npm install @bridge-crux/kit@0.2.0 @bridge-crux/skills@0.2.0 convex
+npx @bridge-crux/skills@0.2.0 install --target ./.codex/skills --project .
+npx bridgecrux --version
 npx bridgecrux doctor --project .
+npm audit signatures --json --include-attestations
 ```
 
 Confirm all three skills and one bounded BridgeCrux instruction block were
-installed. For an OIDC release from this public GitHub repository, also confirm
-the npm package pages show provenance for the new version.
+installed. For an OIDC release from this public GitHub repository, all six exact
+versions must have verified SLSA provenance before tagging.
 
 Only after all six versions, the consumer path, and provenance are correct should
 the release operator create or push the matching Git tag and GitHub Release if the
 project is using them. Record any release-specific limitation before handing the
 repository back to framework development.
+
+Create the annotated tag at the exact commit published by the successful
+workflow, then create the GitHub Release:
+
+```bash
+git tag -a v0.2.0 <release-commit> -m "BridgeCrux 0.2.0"
+git push origin v0.2.0
+gh release create v0.2.0 --repo LycurgusxLycurgus/bridgecrux-system --title "BridgeCrux 0.2.0" --generate-notes --verify-tag
+```
 
 ## Access Tightening And Recovery
 
@@ -185,6 +222,6 @@ A release is complete only when all of these are true:
 - the `bridge-crux:bridgecrux` team retains read/write access;
 - a fresh consumer can install the kit and skills and run the doctor command;
 - an OIDC release shows npm provenance;
-- after OIDC has been proven, traditional publish tokens are disallowed;
+- after public OIDC provenance has been proven, traditional publish tokens are disallowed;
 - the operator reports the commit, version, npm tag, workflow result, consumer
   result, provenance result, and any remaining limitation.

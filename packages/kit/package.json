@@ -1,6 +1,6 @@
 {
   "name": "@bridge-crux/kit",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "BridgeCrux runtime umbrella package and CLI",
   "type": "module",
   "license": "Apache-2.0",
@@ -35,10 +35,10 @@
     }
   },
   "dependencies": {
-    "@bridge-crux/adapters": "0.1.1",
-    "@bridge-crux/content": "0.1.1",
-    "@bridge-crux/convex": "0.1.1",
-    "@bridge-crux/core": "0.1.1"
+    "@bridge-crux/adapters": "0.2.0",
+    "@bridge-crux/content": "0.2.0",
+    "@bridge-crux/convex": "0.2.0",
+    "@bridge-crux/core": "0.2.0"
   },
   "peerDependencies": {
     "convex": ">=1.42.2 <2.0.0"

@@ -33,6 +33,13 @@ export class DefaultUserCopyGate implements UserCopyGate {
     if (input.maxLength && input.text.length > input.maxLength) return "User copy exceeded the configured unsplit channel limit";
     const failed = input.operationResults.some((result) => result.status === "failed" || result.status === "skipped");
     if (failed && input.successClaims.length > 0) return "User copy claimed success after an unsuccessful operation";
+    const succeeded = new Set(
+      input.operationResults
+        .filter((result) => result.status === "succeeded" || result.status === "duplicate")
+        .map((result) => result.operationId),
+    );
+    const missing = (input.requiredOperationIds ?? []).filter((operationId) => !succeeded.has(operationId));
+    if (missing.length > 0) return `User copy claimed success before required operations completed: ${missing.join(", ")}`;
     return undefined;
   }
 }

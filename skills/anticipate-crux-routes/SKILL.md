@@ -87,7 +87,12 @@ Run one static reconciliation across router instructions, route and intent types
 - routes declared in prompts or types but absent from dispatch, and dispatch branches absent from canonical declarations;
 - aliases, commands, or tools whose guards differ from their natural-language path;
 - broad fallbacks that shadow a specific route or turn extraction failure into an unrelated renderer;
-- chat paths that expose tools or high-cost mutations, and agentic paths that can be downgraded from required high thinking by model suggestion;
+- model paths that expose tools outside their declared binding, and agentic paths whose predeclared thinking can be downgraded by model suggestion;
+- missing or contradictory `deterministic`, `hybrid`, and `model` execution policies between canonical content, process steps, bindings, controllers, and tests;
+- deterministic process steps that accept typed text, call a router/tutor/assessment model, expose tools, or consume choices without server-side user/session/step/replay validation;
+- hybrid steps without predeclared difficulty, thinking, schema, domain validation, confirmation, scoped context, completion mode, or tool allowlist;
+- conversational paths that can race the same user/thread because no expiring turn lease guards the whole execution boundary;
+- model routes whose thinking or tools differ from the validated binding, and medium/high model-tool paths whose backend operations bypass deterministic authorization;
 - tests that encode mutually incompatible expected routes for the same state and signal.
 
 Resolve findings at the narrowest source of truth. Merge semantic duplicates when their contracts are identical. Preserve separate routes only when state bundle, authorization, operation, audit meaning, or user recovery genuinely differs, and make priority explicit. Finish with zero unexplained duplicates or contradictions.
@@ -103,6 +108,7 @@ Create one stable checklist row for every user action, scheduled event, determin
 - dispatch branch and handler;
 - backend query, mutation, action, job, or external operation;
 - read/write effect and validation boundary;
+- execution mode, thinking level, model-call allowance, trusted-input source, completion mode, and allowed tools;
 - user-copy source and channel delivery path;
 - router decision, ledger, report, or other audit evidence;
 - regression test or production trace;
@@ -129,7 +135,7 @@ When creating a crux, derive the first checklist from the UI/pre-router flow and
 
 Create one table-driven regression test that simulates the complete declared task surface in a single test block. Give every route and intent at least one representative turn in its valid state, then include boundary rows for ambiguous extraction, missing fields, explicit prior-item references, conflicting signals, aliases, deterministic-process state, unsupported execution, and ordinary knowledge-only chat.
 
-Each row must assert the raw and validated route, thinking policy, allowed tools, handler, operation or deliberate no-op, mutation boundary, persistence effect, copy source, delivery result, and audit evidence. Run every row through the real router-to-controller path rather than testing prompt text alone. The test must fail when a route is unreachable, shadowed, contradictory, connected to a generic fallback, or allowed to claim an unpersisted effect.
+Each row must assert the raw and validated route, execution mode, thinking policy, model-call count, allowed and used tools, trusted structured-input status, turn-lease result, handler, required completion operation or deliberate no-op, mutation boundary, persistence effect, copy source, activity/delivery result, and audit evidence. Run every row through the real router-to-controller path and real in-memory persistence rather than testing prompt text or mocked operation success alone. The test must fail when a route is unreachable, shadowed, contradictory, connected to a generic fallback, uses a model on a zero-model deterministic process turn, exposes an undeclared tool, races a leased session, or claims an unpersisted effect.
 
 Keep this as one maintained route-surface simulation so new routes cannot be added without becoming visible beside all existing routes. Focused unit tests may supplement it; they do not replace it.
 
@@ -227,6 +233,7 @@ Before accepting a candidate, verify:
 - New or changed UI, operations, states, and deterministic processes have been reconciled with the checklist.
 - The static audit reports zero unexplained duplicate or contradictory routes, guards, bindings, policies, and expectations.
 - One table-driven regression test simulates every declared route and intent through validation, execution or no-op, copy, delivery, and audit.
+- Every deterministic process row proves zero router, assessment, tutor, and tool model calls; every hybrid/model row proves its exact predeclared thinking and tool subset.
 - The candidate improves recovery without turning ordinary conversation into an error state.
 - Capability-gap UX is reserved for explicit unsupported execution, never mere curiosity or a request for explanation.
 

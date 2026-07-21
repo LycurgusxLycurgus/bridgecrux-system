@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   DefaultCapabilityGapGate,
-  DefaultDeterministicProcessController,
+  DefaultProcessController,
   DefaultEvidenceGate,
   DefaultMemoryController,
   DefaultMemoryReviewScheduler,
@@ -13,12 +13,15 @@ import {
   HandlerBindingRegistry,
   InMemoryIdempotencyStore,
   InMemoryReportStore,
+  InMemoryStructuredInteractionStore,
+  InMemoryTurnLeaseStore,
   OperationRegistry,
   OptInFeedbackExporter,
   ReviewOnlyRepairQueue,
   RouteIntentRegistry,
   VALIDATION_CODES,
   auditHandlerBindings,
+  auditAllRouteSimulation,
   resolveTurnThinkingLevel,
   type CruxOperation,
   type CruxStateBundle,
@@ -28,6 +31,7 @@ import {
   type OperationContext,
   type ProcessTurnInput,
   type RawRouterDecision,
+  type RouteSimulationObservation,
   type RouteRegistryDefinition,
   type RuntimeJob,
 } from "../src/index.js";
@@ -81,7 +85,8 @@ const bindings: HandlerBinding[] = [
     allowedMutationClasses: [],
     requiredState: ["records"],
     operationIds: ["records.read"],
-    copySources: ["high_thinking_tutor"],
+    executionPolicy: { mode: "model", thinkingLevel: "medium", toolIds: ["records.read"] },
+    copySources: ["conversational_tutor"],
     auditEvents: ["records.inspected"],
   },
   {
@@ -91,6 +96,7 @@ const bindings: HandlerBinding[] = [
     allowedMutationClasses: ["complete_record"],
     requiredState: ["records"],
     operationIds: ["records.complete"],
+    executionPolicy: { mode: "hybrid", thinkingLevel: "high", toolIds: ["records.complete"] },
     copySources: ["high_thinking_tutor"],
     auditEvents: ["records.completed"],
   },
@@ -101,6 +107,7 @@ const bindings: HandlerBinding[] = [
     allowedMutationClasses: [],
     requiredState: [],
     operationIds: [],
+    executionPolicy: { mode: "model", thinkingLevel: "medium", toolIds: [] },
     copySources: ["safe_fallback"],
     auditEvents: ["capability_gap.created"],
   },
@@ -117,6 +124,18 @@ describe("route and binding registries", () => {
         expect.objectContaining({ type: "handler_binding", route: "conversation" }),
         expect.objectContaining({ type: "surface_omission", operationId: "internal.only" }),
       ]),
+    );
+  });
+
+  it("audits one complete simulation row for every declared route and intent", () => {
+    const observations: RouteSimulationObservation[] = [
+      { pathId: "records/inspect", route: "records", intent: "inspect", executionMode: "model" as const, thinkingLevel: "medium" as const, modelCallCount: 2, activeProcessTurn: false, structuredInput: "none" as const, turnLeaseStatus: "acquired" as const, toolIds: ["records.read"], operationIds: ["records.read"], requiredOperationId: "records.read", persisted: true, copySource: "conversational_tutor", activityStatus: "started" as const, delivered: true, audited: true },
+      { pathId: "records/complete", route: "records", intent: "complete", executionMode: "hybrid" as const, thinkingLevel: "high" as const, modelCallCount: 3, activeProcessTurn: false, structuredInput: "none" as const, turnLeaseStatus: "acquired" as const, toolIds: ["records.complete"], operationIds: ["records.complete"], requiredOperationId: "records.complete", persisted: true, copySource: "high_thinking_tutor", activityStatus: "started" as const, delivered: true, audited: true },
+      { pathId: "conversation/unsupported_execution", route: "conversation", intent: "unsupported_execution", executionMode: "model" as const, thinkingLevel: "medium" as const, modelCallCount: 2, activeProcessTurn: false, structuredInput: "none" as const, turnLeaseStatus: "acquired" as const, toolIds: [], operationIds: [], deliberateNoop: true, persisted: true, copySource: "safe_fallback", activityStatus: "started" as const, delivered: true, audited: true },
+    ];
+    expect(auditAllRouteSimulation({ registry, bindings, observations })).toEqual([]);
+    expect(auditAllRouteSimulation({ registry, bindings, observations: observations.slice(1) })).toContain(
+      "records/inspect requires exactly one all-route simulation row; found 0",
     );
   });
 });
@@ -294,19 +313,139 @@ describe("operation execution", () => {
 
 describe("process, memory, and copy protection", () => {
   it("keeps deterministic progression in code", async () => {
-    const controller = new DefaultDeterministicProcessController({
+    const controller = new DefaultProcessController({
       id: "process",
-      steps: [{ id: "one", requiredFields: ["answer"], nextStepId: "two" }, { id: "two", requiredFields: [] }],
+      version: "2",
+      route: "records",
+      intent: "complete",
+      handlerId: "process",
+      steps: [
+        {
+          id: "one",
+          input: {
+            mode: "closed_choice",
+            control: {
+              id: "one",
+              field: "answer",
+              prompt: "Choose",
+              options: [{ id: "yes", label: "Yes", value: "yes" }, { id: "no", label: "No", value: "no" }],
+            },
+          },
+          executionPolicy: { mode: "deterministic", toolIds: [] },
+          completionMode: "controller",
+          nextStepId: "two",
+          confirmationPolicy: "never",
+          missingFieldQuestions: {},
+        },
+        {
+          id: "two",
+          input: {
+            mode: "closed_choice",
+            control: {
+              id: "two",
+              field: "answer",
+              prompt: "Choose",
+              options: [{ id: "done", label: "Done", value: "done" }, { id: "later", label: "Later", value: "later" }],
+            },
+          },
+          executionPolicy: { mode: "deterministic", toolIds: [] },
+          completionMode: "controller",
+          confirmationPolicy: "never",
+          missingFieldQuestions: {},
+        },
+      ],
       advanceOperationId: "process.advance",
-      authoredCopy: { accept: "Accepted", partial: "More needed", reject: "Try again", clarify: "Please clarify" },
+      authoredCopy: { ready: "Accepted", partial: "More needed", reject: "Try again", clarify: "Please clarify" },
     });
-    const input = processInput({ answer: "yes" });
+    const input = processInput({ answer: "yes", __bridgecruxTrustedChoice: true });
     const assessment = await controller.assess(input);
     const plan = await controller.plan({ ...input, assessment });
     expect(assessment.canAdvance).toBe(true);
     expect(plan.operations[0]).toMatchObject({ id: "process.advance", kind: "mutate" });
     const question = await controller.assess({ ...input, decision: { ...input.decision, speechAct: "question" } });
     expect(question.canAdvance).toBe(false);
+  });
+
+  it("lets domain validation downgrade a high-thinking hybrid assessment without advancing", async () => {
+    const assess = vi.fn().mockResolvedValue({
+      status: "ready",
+      normalizedFields: { evidence: "model proposal" },
+      targetStepId: "one",
+      canAdvance: true,
+      missingFields: [],
+      proposedCorrections: [],
+      confidence: 0.9,
+      reasonCodes: ["model_ready"],
+    });
+    const controller = new DefaultProcessController(
+      {
+        id: "process",
+        version: "2",
+        route: "records",
+        intent: "complete",
+        handlerId: "process",
+        steps: [{
+          id: "one",
+          input: { mode: "open_text", schema: { type: "object" }, requiredFields: ["evidence"] },
+          executionPolicy: { mode: "hybrid", thinkingLevel: "high", toolIds: ["records.complete"] },
+          completionMode: "controller",
+          confirmationPolicy: "never",
+          missingFieldQuestions: { evidence: "What evidence should be saved?" },
+        }],
+        advanceOperationId: "process.advance",
+        authoredCopy: { ready: "Ready", partial: "More needed", reject: "Try again", clarify: "Please clarify" },
+      },
+      {
+        assessment: { assess },
+        validators: [{
+          validate: ({ assessment }) => ({
+            ...assessment,
+            status: "partial",
+            canAdvance: false,
+            missingFields: ["domain_confirmation"],
+            reasonCodes: [...assessment.reasonCodes, "domain_not_ready"],
+          }),
+        }],
+      },
+    );
+    const input = processInput({ evidence: "free text" });
+    const result = await controller.assess(input);
+    const plan = await controller.plan({ ...input, assessment: result });
+    expect(assess).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({ status: "partial", canAdvance: false, reasonCodes: ["model_ready", "domain_not_ready"] });
+    expect(plan.operations).toEqual([]);
+    expect(plan.responsePlan).toMatchObject({ source: "high_thinking_tutor", successClaims: [] });
+  });
+
+  it("consumes server-issued choices once and rejects replay", async () => {
+    const store = new InMemoryStructuredInteractionStore(() => "interaction-1");
+    const control = await store.issue({
+      control: {
+        id: "answer",
+        field: "answer",
+        prompt: "Choose",
+        options: [{ id: "yes", label: "Yes", value: true }, { id: "no", label: "No", value: false }],
+      },
+      userId: "u",
+      sessionId: "s",
+      processRunId: "run",
+      stepId: "one",
+      correlationId: "corr",
+    });
+    const request = { interaction: { kind: "choice" as const, interactionId: control.id, optionId: "yes" }, userId: "u", sessionId: "s" };
+    await expect(store.consume(request)).resolves.toMatchObject({ processRunId: "run", stepId: "one", field: "answer", value: true });
+    await expect(store.consume(request)).resolves.toBeUndefined();
+  });
+
+  it("serializes session turns and permits takeover only after release or expiry", async () => {
+    let now = 100;
+    const store = new InMemoryTurnLeaseStore(() => now);
+    await expect(store.acquire({ key: "session", correlationId: "one", expiresAt: 200 })).resolves.toBe(true);
+    await expect(store.acquire({ key: "session", correlationId: "two", expiresAt: 200 })).resolves.toBe(false);
+    await store.release({ key: "session", correlationId: "one" });
+    await expect(store.acquire({ key: "session", correlationId: "two", expiresAt: 200 })).resolves.toBe(true);
+    now = 201;
+    await expect(store.acquire({ key: "session", correlationId: "three", expiresAt: 300 })).resolves.toBe(true);
   });
 
   it("rejects tutor-authored or secret memory and blocks false success copy", async () => {
@@ -337,6 +476,15 @@ describe("process, memory, and copy protection", () => {
     ).toBe(false);
     expect(
       gate.validate({ source: "high_thinking_tutor", text: "The router decision says yes.", operationResults: [], successClaims: [] }).ok,
+    ).toBe(false);
+    expect(
+      gate.validate({
+        source: "high_thinking_tutor",
+        text: "Saved.",
+        operationResults: [],
+        successClaims: ["saved"],
+        requiredOperationIds: ["records.complete"],
+      }).ok,
     ).toBe(false);
   });
 
@@ -416,32 +564,24 @@ describe("reports, repair, and feedback privacy", () => {
 });
 
 describe("turn thinking policy", () => {
-  it("keeps agentic work high and permits medium only for explicit knowledge-only chat", () => {
+  it("derives medium or high thinking from the validated route policy", () => {
     const validator = new DefaultRouterDecisionValidator();
-    const chat = validator.validate({ decision: raw({ needsHighThinking: false }), context: validationContext() });
+    const chat = validator.validate({ decision: raw(), context: validationContext() });
     expect(
       resolveTurnThinkingLevel({
         decision: chat,
-        state: {},
-        operationResults: [],
-        knowledgeOnlyChatRoutes: ["records"],
+        bindings: new HandlerBindingRegistry(bindings),
       }),
     ).toBe("medium");
 
+    const agentic = validator.validate({
+      decision: raw({ route: "records", intent: "complete", speechAct: "announcement", stateMutationCandidate: "complete_record", mutationEvidence: "positive", extracted: { evidence: "x", result: "y" } }),
+      context: validationContext(),
+    });
     expect(
       resolveTurnThinkingLevel({
-        decision: { ...chat, needsHighThinking: true },
-        state: {},
-        operationResults: [],
-        knowledgeOnlyChatRoutes: ["records"],
-      }),
-    ).toBe("high");
-    expect(
-      resolveTurnThinkingLevel({
-        decision: chat,
-        state: { activeProcess: {} },
-        operationResults: [],
-        knowledgeOnlyChatRoutes: ["records"],
+        decision: agentic,
+        bindings: new HandlerBindingRegistry(bindings),
       }),
     ).toBe("high");
   });
@@ -452,7 +592,6 @@ function raw(overrides: Partial<RawRouterDecision> = {}): RawRouterDecision {
     route: "records",
     intent: "inspect",
     confidence: 0.95,
-    needsHighThinking: true,
     speechAct: "question",
     temporalStance: "present",
     targetReferences: [],

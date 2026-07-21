@@ -1,6 +1,6 @@
 {
   "name": "bridgecrux",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "license": "Apache-2.0",
@@ -31,7 +31,9 @@
     "pack:test": "vitest run conformance/test/installation.test.ts",
     "release:version": "node scripts/set-release-version.mjs",
     "release:verify": "node scripts/verify-release.mjs",
+    "release:prepare": "node scripts/prepare-release.mjs",
     "release:publish": "node scripts/publish-release.mjs",
+    "release:verify-published": "node scripts/verify-published-release.mjs",
     "doctor": "node packages/kit/dist/cli.js doctor",
     "build": "npm run clean && npm run compile && npm run typecheck && npm run content:build && npm run lint && npm run test"
   },

@@ -1,11 +1,11 @@
 ---
 name: write-crux-prompts
-description: "Create or revise the canonical BridgeCrux prompt package for a crux: system.prompt.md, assistants.md, and specific-functions/*.md. Use when creating a crux from scratch, transforming an application into a crux, adding or changing task signals and routes, documenting the agent's frontend/backend harness, defining deterministic processes, or correcting drift between prompt content and executable application behavior."
+description: "Create or revise the canonical BridgeCrux prompt package for a crux: system.prompt.md, assistants.md, and specific-functions/*.md. Use when creating a crux from scratch, transforming an application into a crux, adding or changing task signals and routes, documenting the agent's frontend/backend harness, defining established deterministic or hybrid processes, or correcting drift between prompt content and executable application behavior."
 ---
 
 # Write Crux Prompts
 
-Create one coherent BridgeCrux prompt package grounded in the application that actually exists. The package must tell the user-facing agent what it is, what product it operates, what frontend and backend affordances it has, how it should help the user, how turns are routed, and which domain functions and deterministic processes are valid.
+Create one coherent BridgeCrux prompt package grounded in the application that actually exists. The package must tell the user-facing agent what it is, what product it operates, what frontend and backend affordances it has, how it should help the user, how turns are routed, and which domain functions and established processes are valid.
 
 This skill authors canonical crux content. It does not invent backend capabilities, implement runtime primitives, or treat prompt text as a substitute for missing software.
 
@@ -37,7 +37,7 @@ cruxes/<crux-id>/
   assistants.md
   specific-functions/
     <domain-function>.md
-    deterministic-processes.md  # only when deterministic processes exist
+    processes.md  # only when established processes exist
 ```
 
 Do not create `general-functions/`. Harness-wide capabilities belong in `system.prompt.md`. Internal task-signal routing and operation policy belong in `assistants.md`. Domain knowledge, domain operations, and deterministic process definitions belong in `specific-functions/`.
@@ -241,7 +241,7 @@ Section requirements:
 - Define language, tone, formatting, terminology, and channel-native syntax.
 - Keep route names, tool names, schemas, model names, debug language, and backend mechanics internal.
 - Require truthful result copy based on persisted operation outcomes.
-- Define deterministic copy as authored process text and conversational copy as high-thinking tutor output.
+- Define authored deterministic copy, medium-thinking knowledge or simple-process copy, and high-thinking agentic copy. Tool use follows the predeclared validated route or process policy rather than the copy category.
 
 #### Failures, Reports, And Recovery
 
@@ -374,7 +374,6 @@ Use a universal semantic envelope with crux-declared route and intent values. Ad
   "route": "<declared-route>",
   "intent": "<declared-intent>",
   "confidence": 0,
-  "needsHighThinking": true,
   "speechAct": "<question|announcement|proposal|permission|correction|confirmation|execution|other>",
   "temporalStance": "<past|present|future|hypothetical|unclear>",
   "targetReferences": [],
@@ -389,7 +388,19 @@ Use a universal semantic envelope with crux-declared route and intent values. Ad
 }
 ```
 
-The router uses high thinking by default with `gemini-3.1-flash-lite` and returns JSON only, never user copy, never tool execution, and never direct persistence. Treat its `needsHighThinking` field as advisory escalation metadata: runtime policy keeps every agentic path at high thinking. Only explicitly declared knowledge-only chat may use medium thinking with no tools; deterministic authored process output uses no model call.
+The freeform router uses medium thinking with `gemini-3.1-flash-lite` and returns JSON only, never user copy, direct tool execution, or persistence authorization. Code selects the execution policy declared for the validated route: deterministic code after routing, medium/high hybrid assessment with its scoped tools, medium model interaction for knowledge or simple work, or high model interaction for agentic work. Model output cannot change the declared mode, thinking level, completion mode, or tool allowlist.
+
+#### Execution Policy Matrix
+
+Declare one policy for every route and intent and one policy for every established process step:
+
+| Mode | Input and role | Thinking | Tools | Authority |
+|---|---|---|---|---|
+| deterministic | Code-only handler after freeform routing, or a server-issued closed choice in an active deterministic process | None after route selection; zero model calls for active structured process turns | None | Code validates and executes |
+| hybrid | Structured, open-text, or composite process input requiring interpretation before a predefined outcome | Medium or high, fixed from process difficulty before entry | Only the process allowlist | Model proposes assessment/tool calls; code validates and authorizes |
+| model | Free interaction, explanation, discovery, or agentic work | Medium for knowledge/simple work; high for agentic work | Only the validated route allowlist | Model answers or proposes tool calls; code authorizes every operation |
+
+A typed phrase that resembles a displayed choice remains natural language. Only the server-issued structured selection can take the zero-model process path. Keep free conversation as the primary entry surface; show controls only inside a process step whose contract requires them.
 
 #### Deterministic Decision Validation
 
@@ -448,12 +459,12 @@ The validated decision, not raw router output, controls dispatch.
 
 #### Deterministic Processes
 
-- Reference `specific-functions/deterministic-processes.md` when deterministic processes exist.
+- Reference `specific-functions/processes.md` when established processes exist.
 - State that code owns step progression and durable mutation.
 - Allow the tutor to assess, normalize, explain, and request the smallest missing information.
 - Preserve deferred items as pending rather than completed when the process contract permits deferral.
 - Keep deferred items visible, excluded from progress, and completable later by explicit reference.
-- Use deterministic authored copy for stable process surfaces and high-thinking tutor copy for interpretation, correction, and ambiguity.
+- Use deterministic authored copy for closed-choice process surfaces and medium/high tutor copy according to each hybrid step's predeclared difficulty. Model-tool completion must name the required backend completion operation, which must succeed before progress or success copy.
 
 #### Capability Gaps And Audit Defects
 
@@ -561,7 +572,7 @@ Requirements:
 
 Do not turn domain content into universal BridgeCrux vocabulary. Use the target product's precise language only inside its crux package.
 
-### 6. Write `specific-functions/deterministic-processes.md` When Needed
+### 6. Write `specific-functions/processes.md` When Needed
 
 Create this single file only when one or more deterministic processes exist. Do not create a top-level `deterministic-processes/` directory.
 
@@ -570,12 +581,25 @@ The file is the canonical process contract. It may contain multiple process bloc
 ```yaml
 ---
 id: <stable-process-id>
-kind: deterministic_process
+kind: process
 version: <content-version>
 entry_routes:
   - <declared-route>
+advance_operation: <declared-operation-id>
 steps:
-  - <stable-step-id>
+  - id: <stable-step-id>
+    input:
+      mode: <closed_choice|structured|open_text|composite>
+      # closed_choice: field, prompt, and two or more id/label/value options
+      # all other modes: JSON schema and required_fields
+    execution:
+      mode: <deterministic|hybrid>
+      thinking: <medium-or-high-for-hybrid>
+      tools: []
+    completion: <controller|model_tool>
+    next_step: <stable-step-id-or-omit>
+    confirmation_policy: <never|on_correction|always>
+    missing_field_questions: {}
 state_reads:
   - <authoritative-record>
 state_writes:
@@ -599,7 +623,8 @@ Each process body must define:
 - deferral behavior when allowed;
 - preservation and reversal behavior;
 - authored deterministic copy ids;
-- high-thinking tutor responsibilities;
+- medium/high assessment and tutor responsibilities selected from declared process difficulty;
+- tool allowlist and required completion operation when completion is `model_tool`;
 - report and recovery behavior;
 - audit and regression evidence.
 
@@ -614,7 +639,8 @@ Before validation, verify:
 - Every mutating route has deterministic validation, a handler binding, an operation, preservation rules, and audit evidence.
 - Every specific function is reachable through declared routes and intents or explicitly internal-only.
 - Every tool named in canonical content exists and is authorized only for relevant validated routes.
-- Every deterministic process referenced by `assistants.md` exists in `specific-functions/deterministic-processes.md`.
+- Every established process referenced by `assistants.md` exists in `specific-functions/processes.md`.
+- Every process step has a valid input mode, predeclared execution/thinking/tool policy, completion mode, schema or closed choices, confirmation policy, and missing-field questions.
 - Router and tutor use the same bounded recent-conversation window.
 - Persisted references override active-item fallback and transcript recency.
 - Domain history is read from domain records rather than compact memory.
@@ -645,7 +671,7 @@ The skill succeeds only when all applicable checks pass:
 
 1. The package contains `system.prompt.md`, `assistants.md`, and at least one `specific-functions/*.md` file.
 2. No `general-functions/` directory was created.
-3. Deterministic processes, when present, live only in `specific-functions/deterministic-processes.md`.
+3. Established processes, when present, live only in `specific-functions/processes.md`.
 4. `system.prompt.md` truthfully defines identity, user experience, frontend/channel, backend state, capabilities, mutation rules, memory, safety, copy, and recovery.
 5. `assistants.md` contains a Task-Signal Smart Router table derived from the actual task surface.
 6. Route and intent names are crux-declared inside the universal decision envelope.
@@ -663,5 +689,7 @@ The skill succeeds only when all applicable checks pass:
 18. The maintained route implementation checklist reconciles UI-to-runtime and runtime-to-task-surface coverage.
 19. No source application's domain vocabulary or sample content leaked into universal BridgeCrux rules.
 20. The final package gives the agent enough truthful context to operate the app as a useful assistant or tutor without exposing its internal machinery to the user.
+21. Every route and process step declares exactly one execution mode; deterministic process rows prove trusted closed choices and zero model calls, while hybrid/model rows prove their fixed thinking level and tool subset.
+22. The generated manifest provides process schemas, semantic control descriptors, route checklist rows, handler stubs, and all-route regression scenarios from the canonical contract.
 
 If a check fails because runtime software or builder support is missing, record the implementation requirement explicitly. Do not hide the gap with prompt prose.

@@ -2,6 +2,16 @@
 .env
 .env.*
 !.env.example
+.npmrc
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+credentials*.json
+service-account*.json
+*-service-account.json
 
 # Dependencies and generated output
 node_modules/

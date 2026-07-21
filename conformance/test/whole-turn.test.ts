@@ -1,14 +1,19 @@
 import { GeminiModelClient, GeminiTaskSignalRouter, TelegramChannelAdapter } from "@bridge-crux/adapters";
 import {
   DeclarativeSpecificFunctionController,
+  DefaultProcessController,
   DefaultOperationExecutor,
   DefaultRouterDecisionValidator,
   DefaultTurnController,
   DefaultUserCopyGate,
   HandlerBindingRegistry,
+  ProcessRegistry,
+  InMemoryCruxRuntime,
   InMemoryReportStore,
+  InMemoryTurnLeaseStore,
   OperationRegistry,
   SpecificFunctionRegistry,
+  ToolOperationRegistry,
   type LedgerEvent,
   type PersistedMessage,
   type RawRouterDecision,
@@ -45,6 +50,7 @@ const binding = {
   allowedMutationClasses: ["complete_record"],
   requiredState: ["records"],
   operationIds: ["records.complete"],
+  executionPolicy: { mode: "hybrid" as const, thinkingLevel: "high" as const, toolIds: ["records.complete"] },
   copySources: ["high_thinking_tutor" as const],
   auditEvents: ["record.completed"],
 };
@@ -57,9 +63,9 @@ describe("whole-turn conformance", () => {
       models: {
         generateContent: vi.fn(async (request: unknown) => {
           modelCalls.push(request);
-          return modelCalls.length === 1
-            ? { text: JSON.stringify(routerDecision()) }
-            : { text: "Record Alpha is complete and the evidence is saved." };
+          if (modelCalls.length === 1) return { text: JSON.stringify(routerDecision()) };
+          if (modelCalls.length === 2) return { text: '{"action":"call","toolId":"records.complete","input":{"target":"record-alpha","evidence":"signed result"}}' };
+          return { text: '{"action":"respond","text":"Record Alpha is complete and the evidence is saved."}' };
         }),
       },
     };
@@ -88,29 +94,37 @@ describe("whole-turn conformance", () => {
     });
 
     const bindings = new HandlerBindingRegistry([binding]);
+    const tools = new ToolOperationRegistry();
+    tools.register({
+      definition: {
+        id: "records.complete",
+        description: "Complete the validated record with evidence.",
+        inputSchema: { type: "object", properties: { target: { type: "string" }, evidence: { type: "string" } } },
+      },
+      operation: ({ arguments: arguments_, handler }) => ({
+        id: "records.complete",
+        kind: "mutate",
+        target: String(arguments_["target"] ?? handler.decision.resolvedReferences[0]?.persistedId ?? ""),
+        payload: { evidence: arguments_["evidence"] },
+        preconditions: [],
+        preservation: { preserveOmittedFields: true, preserveHistory: true, reversible: false },
+        idempotencyKey: `complete:${handler.decision.resolvedReferences[0]?.persistedId}`,
+        correlationId: handler.correlationId,
+      }),
+    });
     const functions = new SpecificFunctionRegistry();
     functions.register(
       new DeclarativeSpecificFunctionController({
         id: "records-controller",
         intents: {
           complete: {
-            operations: (input) => [
-              {
-                id: "records.complete",
-                kind: "mutate",
-                target: input.decision.resolvedReferences[0]?.persistedId ?? "",
-                payload: { evidence: input.decision.extracted.evidence },
-                preconditions: [],
-                preservation: { preserveOmittedFields: true, preserveHistory: true, reversible: false },
-                idempotencyKey: `complete:${input.decision.resolvedReferences[0]?.persistedId}`,
-                correlationId: input.correlationId,
-              },
-            ],
+            operations: () => [],
             response: () => ({
               source: "high_thinking_tutor",
               tutorInstruction: "State only the persisted completion result.",
               fallbackText: "Record Alpha is complete.",
               successClaims: ["record completion"],
+              toolIds: ["records.complete"],
             }),
           },
         },
@@ -185,12 +199,14 @@ describe("whole-turn conformance", () => {
       jobs: { enqueue: async (job) => ({ ...job, id: "job-1", status: "queued" }) },
       model,
       channel,
+      turns: new InMemoryTurnLeaseStore(() => 1_700_000_000_000),
     };
     const controller = new DefaultTurnController({
       router,
       validator: new DefaultRouterDecisionValidator(),
       bindings,
       functions,
+      tools,
       ports,
       copyGate: new DefaultUserCopyGate(),
       validationContext: (state) => ({
@@ -229,16 +245,165 @@ describe("whole-turn conformance", () => {
     expect(domain.get("record-alpha")).toEqual({ status: "completed", evidence: "signed result" });
     expect(auditDecisions.map((audit) => audit.phase)).toEqual(["raw", "validated"]);
     expect(ledger).toHaveLength(1);
-    expect(send).toHaveBeenCalledTimes(1);
+    expect(send).toHaveBeenCalledTimes(2);
     expect(modelCalls).toEqual([
+      expect.objectContaining({ config: expect.objectContaining({ thinkingConfig: { thinkingLevel: "MEDIUM" } }) }),
       expect.objectContaining({ config: expect.objectContaining({ thinkingConfig: { thinkingLevel: "HIGH" } }) }),
       expect.objectContaining({ config: expect.objectContaining({ thinkingConfig: { thinkingLevel: "HIGH" } }) }),
     ]);
-    const deliveryBody = JSON.parse(String((send.mock.calls[0]?.[1] as RequestInit | undefined)?.body)) as Record<string, unknown>;
+    const activityBody = JSON.parse(String((send.mock.calls[0]?.[1] as RequestInit | undefined)?.body)) as Record<string, unknown>;
+    expect(activityBody).toMatchObject({ chat_id: "42", action: "typing" });
+    const deliveryBody = JSON.parse(String((send.mock.calls[1]?.[1] as RequestInit | undefined)?.body)) as Record<string, unknown>;
     expect(deliveryBody).toMatchObject({ parse_mode: "HTML", text: "Record Alpha is complete and the evidence is saved." });
     expect(operationExecutions).toBe(1);
     expect(duplicate.status).toBe("duplicate");
     expect(await reports.listOpen()).toEqual([]);
+  });
+});
+
+describe("deterministic process conformance", () => {
+  it("advances from a trusted closed choice with zero router, tutor, or tool model calls", async () => {
+    const processRegistry = new ProcessRegistry();
+    processRegistry.register(new DefaultProcessController({
+      id: "onboarding",
+      version: "2",
+      route: "process",
+      intent: "answer",
+      handlerId: "onboarding-controller",
+      steps: [{
+        id: "choose",
+        input: {
+          mode: "closed_choice",
+          control: {
+            id: "choose",
+            field: "answer",
+            prompt: "Choose one option.",
+            options: [{ id: "yes", label: "Yes", value: true }, { id: "no", label: "No", value: false }],
+          },
+        },
+        executionPolicy: { mode: "deterministic", toolIds: [] },
+        completionMode: "controller",
+        confirmationPolicy: "never",
+        missingFieldQuestions: {},
+      }],
+      advanceOperationId: "process.advance",
+      authoredCopy: { ready: "Choice saved.", partial: "Choose one option.", reject: "Choose one option.", clarify: "Choose one option." },
+    }));
+    const processRoute: RouteRegistryDefinition = {
+      routes: [{
+        id: "process",
+        intents: [{
+          id: "answer",
+          speechActs: ["execution", "other"],
+          temporalStances: ["present"],
+          mutationClasses: ["advance_process"],
+          requiredFields: ["answer"],
+          requiredState: [],
+        }],
+      }],
+    };
+    const processBinding = {
+      route: "process",
+      intent: "answer",
+      handlerId: "onboarding-controller",
+      allowedMutationClasses: ["advance_process"],
+      requiredState: [],
+      operationIds: ["process.advance"],
+      executionPolicy: { mode: "deterministic" as const, toolIds: [] as [] },
+      copySources: ["authored_deterministic" as const],
+      auditEvents: ["process.advanced"],
+    };
+    const bindings = new HandlerBindingRegistry([processBinding]);
+    const operations = new OperationRegistry();
+    const advance = vi.fn().mockImplementation(async (operation) => ({ operationId: operation.id, status: "succeeded" as const, persistedIds: [operation.target] }));
+    operations.register({ operationId: "process.advance", execute: advance });
+    let interactionSequence = 0;
+    const runtime = new InMemoryCruxRuntime({
+      cruxId: "process",
+      userId: "user-1",
+      externalId: "42",
+      sessionId: "session-1",
+      activeProcess: { processId: "onboarding", version: "2", runId: "run-1", activeStepId: "choose", state: {} },
+      id: () => `interaction-${++interactionSequence}`,
+    });
+    const control = await runtime.interactions.issue({
+      control: {
+        id: "choose",
+        field: "answer",
+        prompt: "Choose one option.",
+        options: [{ id: "yes", label: "Yes", value: true }, { id: "no", label: "No", value: false }],
+      },
+      userId: "user-1",
+      sessionId: "session-1",
+      processRunId: "run-1",
+      stepId: "choose",
+      correlationId: "seed",
+    });
+    const router = { modelName: "must-not-run", decide: vi.fn() };
+    const model = { structured: vi.fn(), tutor: vi.fn(), toolLoop: vi.fn() };
+    const send = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true, result: { message_id: 600 } }), { status: 200 }));
+    const channel = new TelegramChannelAdapter({ token: "test", fetch: send, retryDelay: async () => undefined });
+    const ports = runtime.ports({ operations: new DefaultOperationExecutor(operations), model: model as never, channel });
+    const controller = new DefaultTurnController({
+      router: router as never,
+      validator: new DefaultRouterDecisionValidator(),
+      bindings,
+      functions: new SpecificFunctionRegistry(),
+      processes: processRegistry,
+      ports,
+      copyGate: new DefaultUserCopyGate(),
+      validationContext: () => ({
+        registry: processRoute,
+        bindings: bindings.list(),
+        referenceCandidates: [],
+        availableState: [],
+        evidencePolicies: {},
+        minimumGapConfidence: 0.75,
+        reportPersistable: true,
+      }),
+      tutor: { systemPrompt: "Not used." },
+      id: (() => { let id = 0; return () => `turn-${++id}`; })(),
+    });
+    const event = {
+      update_id: 701,
+      callback_query: {
+        id: "callback-701",
+        from: { id: 42 },
+        data: `bc:${control.id}:yes`,
+        message: { message_id: 70, chat: { id: 42 } },
+      },
+    };
+    const input = {
+      cruxId: "process",
+      event,
+      registry: processRoute,
+      declaredOperations: ["process.advance"],
+      safetyPolicies: [],
+      mutationPolicies: ["trusted choices only"],
+      conversationWindow: 12,
+    };
+
+    await runtime.turns.acquire({ key: "process:telegram:42:42", correlationId: "blocking-turn", expiresAt: Date.now() + 60_000 });
+    const busy = await controller.handle(input);
+    expect(busy.status).toBe("busy");
+    expect(runtime.messages).toHaveLength(0);
+    expect(String(send.mock.calls[0]?.[0])).toContain("answerCallbackQuery");
+    expect(router.decide).not.toHaveBeenCalled();
+    expect(advance).not.toHaveBeenCalled();
+    await runtime.turns.release({ key: "process:telegram:42:42", correlationId: "blocking-turn" });
+
+    const result = await controller.handle(input);
+    const duplicate = await controller.handle(input);
+
+    expect(result).toMatchObject({ status: "completed", operationResults: [{ operationId: "process.advance", status: "succeeded" }] });
+    expect(duplicate.status).toBe("duplicate");
+    expect(advance).toHaveBeenCalledOnce();
+    expect(router.decide).not.toHaveBeenCalled();
+    expect(model.structured).not.toHaveBeenCalled();
+    expect(model.tutor).not.toHaveBeenCalled();
+    expect(model.toolLoop).not.toHaveBeenCalled();
+    expect(runtime.routerDecisions).toHaveLength(2);
+    expect(runtime.routerDecisions.every((decision) => decision.model === undefined)).toBe(true);
   });
 });
 
@@ -247,7 +412,6 @@ function routerDecision(): RawRouterDecision {
     route: "records",
     intent: "complete",
     confidence: 0.98,
-    needsHighThinking: true,
     speechAct: "announcement",
     temporalStance: "past",
     targetReferences: [{ raw: "Record Alpha", persistedId: "record-alpha", confidence: 1 }],

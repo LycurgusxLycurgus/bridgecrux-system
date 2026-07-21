@@ -18,9 +18,31 @@ The command performs one release acceptance sequence:
 6. lint TypeScript sources and tests;
 7. run core, content, Convex, Gemini, Telegram, kit, installer, and whole-turn tests.
 
-Convex persistence tests run against `convex-test`, including actual schema indexes and transactions. Gemini and Telegram offline tests use injected provider boundaries; they verify request configuration, schema handling, normalization, splitting, retries, provider ids, and structured errors without credentials.
+Convex persistence tests run against `convex-test`, including actual schema
+indexes, transactions, structured-choice replay protection, and expiring turn
+leases. Gemini and Telegram offline tests use injected provider boundaries; they
+verify medium-thinking freeform routing, medium/high tool loops, schema handling,
+normalization, safe HTML, typing refresh, callback acknowledgement, inline
+controls, splitting, retries, provider ids, and structured errors without
+credentials.
 
-The whole-turn test runs a neutral Telegram update through the real Telegram normalization boundary, Gemini structured/tutor adapter boundary, deterministic validator, handler binding, idempotent operation, persistence ports, copy gate, Telegram delivery boundary, and raw/validated audit records. Replaying the update must not rerun the operation.
+Whole-turn tests run neutral Telegram updates through the real Telegram
+normalization boundary, Gemini structured/tool adapter boundary, deterministic
+validator, execution-policy binding, idempotent operation, in-memory persistence,
+copy gate, Telegram delivery, and raw/validated audit records. One test proves a
+hybrid high-thinking tool mutation. Another proves that a trusted active-process
+choice performs its code-owned transition with zero router, assessment, tutor,
+or tool-model calls. Replaying either inbound event must not rerun its operation.
+
+`auditAllRouteSimulation` is the public conformance helper for the one-table
+route simulation maintained by `$anticipate-crux-routes`. Every declared
+route/intent appears exactly once and asserts execution mode, thinking policy,
+model-call count, trusted structured input, tools, required operation,
+persistence, delivery, and audit. The helper rejects duplicates,
+contradictions, missing paths, model use on deterministic process turns, and
+undeclared tools. Use `InMemoryCruxRuntime` so those observations come from real
+in-memory message, interaction, lease, ledger, report, and audit persistence
+rather than mocked operation success.
 
 ## Package Installation Gate
 

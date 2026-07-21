@@ -168,6 +168,60 @@ describe("ConvexBridgeCruxRepository", () => {
     expect(state.activeProcess?.activeStepId).toBe("step-two");
     expect(state.deferredItems).toBeUndefined();
   });
+
+  it("persists structured choices and consumes each interaction exactly once", async () => {
+    const t = convexTest({ schema: bridgeCruxSchema, modules });
+    const persisted = await t.run((ctx) => new ConvexBridgeCruxRepository(ctx.db).persistInbound(inbound, "records"));
+    const result = await t.run(async (ctx) => {
+      const processRunId = await ctx.db.insert("bridgecruxProcessRuns", {
+        userId: persisted.userId as never,
+        sessionId: persisted.sessionId as never,
+        cruxId: "records",
+        processId: "review",
+        processVersion: "2",
+        status: "active",
+        activeStepId: "choose",
+        stateJson: "{}",
+        startedAt: 1,
+        updatedAt: 1,
+      });
+      const repository = new ConvexBridgeCruxRepository(ctx.db, undefined, () => 500);
+      const control = await repository.issueInteraction({
+        control: {
+          id: "choose",
+          field: "answer",
+          prompt: "Choose",
+          options: [{ id: "yes", label: "Yes", value: true }, { id: "no", label: "No", value: false }],
+        },
+        userId: persisted.userId,
+        sessionId: persisted.sessionId,
+        processRunId,
+        stepId: "choose",
+        correlationId: "corr-1",
+      });
+      const input = {
+        interaction: { kind: "choice" as const, interactionId: control.id, optionId: "yes" },
+        userId: persisted.userId,
+        sessionId: persisted.sessionId,
+      };
+      return { first: await repository.consumeInteraction(input), replay: await repository.consumeInteraction(input) };
+    });
+    expect(result.first).toMatchObject({ stepId: "choose", field: "answer", value: true });
+    expect(result.replay).toBeUndefined();
+  });
+
+  it("serializes turns with expiring correlation-owned leases", async () => {
+    const t = convexTest({ schema: bridgeCruxSchema, modules });
+    const result = await t.run(async (ctx) => {
+      const repository = new ConvexBridgeCruxRepository(ctx.db, undefined, () => 500);
+      const first = await repository.acquireTurnLease({ key: "records:telegram:42", correlationId: "one", expiresAt: 600 });
+      const concurrent = await repository.acquireTurnLease({ key: "records:telegram:42", correlationId: "two", expiresAt: 600 });
+      await repository.releaseTurnLease({ key: "records:telegram:42", correlationId: "one" });
+      const afterRelease = await repository.acquireTurnLease({ key: "records:telegram:42", correlationId: "two", expiresAt: 600 });
+      return { first, concurrent, afterRelease };
+    });
+    expect(result).toEqual({ first: true, concurrent: false, afterRelease: true });
+  });
 });
 
 function raw(overrides: Partial<RawRouterDecision> = {}): RawRouterDecision {
@@ -175,7 +229,6 @@ function raw(overrides: Partial<RawRouterDecision> = {}): RawRouterDecision {
     route: "records",
     intent: "inspect",
     confidence: 0.95,
-    needsHighThinking: true,
     speechAct: "question",
     temporalStance: "present",
     targetReferences: [],

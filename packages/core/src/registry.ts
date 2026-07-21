@@ -1,5 +1,6 @@
 import type {
   AuditDefectType,
+  ProcessController,
   HandlerBinding,
   HandlerBindingIssue,
   IntentContract,
@@ -7,6 +8,7 @@ import type {
   RouteContract,
   RouteRegistryDefinition,
   SpecificFunctionController,
+  ToolOperationBinding,
 } from "./contracts.js";
 
 export class RouteIntentRegistry {
@@ -106,6 +108,47 @@ export class SpecificFunctionRegistry {
   }
 }
 
+export class ProcessRegistry {
+  readonly #controllers = new Map<string, ProcessController>();
+
+  constructor(controllers: ProcessController[] = []) {
+    for (const controller of controllers) this.register(controller);
+  }
+
+  register(controller: ProcessController): void {
+    if (this.#controllers.has(controller.id)) throw new Error(`Duplicate deterministic-process controller: ${controller.id}`);
+    this.#controllers.set(controller.id, controller);
+  }
+
+  resolve(id: string): ProcessController | undefined {
+    return this.#controllers.get(id);
+  }
+}
+
+export class ToolOperationRegistry {
+  readonly #bindings = new Map<string, ToolOperationBinding>();
+
+  constructor(bindings: ToolOperationBinding[] = []) {
+    for (const binding of bindings) this.register(binding);
+  }
+
+  register(binding: ToolOperationBinding): void {
+    if (this.#bindings.has(binding.definition.id)) throw new Error(`Duplicate tool binding: ${binding.definition.id}`);
+    this.#bindings.set(binding.definition.id, binding);
+  }
+
+  resolve(id: string): ToolOperationBinding | undefined {
+    return this.#bindings.get(id);
+  }
+
+  definitions(ids: string[]): ToolOperationBinding[] {
+    return ids.flatMap((id) => {
+      const binding = this.resolve(id);
+      return binding ? [binding] : [];
+    });
+  }
+}
+
 export function auditHandlerBindings(
   registry: RouteIntentRegistry,
   bindings: HandlerBindingRegistry,
@@ -137,6 +180,14 @@ export function auditHandlerBindings(
       }
       if (intent.mutationClasses.length > 0 && binding.operationIds.length === 0) {
         issues.push(issue("handler_binding", `Mutating intent ${route.id}/${intent.id} has no operation`, route.id, intent.id));
+      }
+      if (binding.executionPolicy.mode === "deterministic" && binding.executionPolicy.toolIds.length > 0) {
+        issues.push(issue("execution_policy", `Deterministic binding ${route.id}/${intent.id} cannot expose tools`, route.id, intent.id));
+      }
+      for (const toolId of binding.executionPolicy.toolIds) {
+        if (!binding.operationIds.includes(toolId)) {
+          issues.push(issue("execution_policy", `Binding exposes tool ${toolId} outside its operation ids`, route.id, intent.id));
+        }
       }
       for (const mutationClass of binding.allowedMutationClasses) {
         if (!intent.mutationClasses.includes(mutationClass)) {
