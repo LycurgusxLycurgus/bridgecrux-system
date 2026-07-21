@@ -14,24 +14,26 @@ As of 2026-07-21:
 - npm account currently in both release-capable teams: `bridgecrux`
 - GitHub owner and repository: `LycurgusxLycurgus/bridgecrux-system`
 - default branch: `main`
-- all six public packages: published at synchronized version `0.1.1` under
+- repository visibility: public, so trusted publication can produce npm
+  provenance
+- all six public packages: published at synchronized version `0.2.0` under
   `latest` by GitHub Actions run
-  [`29773380080`](https://github.com/LycurgusxLycurgus/bridgecrux-system/actions/runs/29773380080)
+  [`29863303463`](https://github.com/LycurgusxLycurgus/bridgecrux-system/actions/runs/29863303463)
 - dedicated `bridgecrux` team access: verified read/write on all six packages;
   `bridgecrux` is the sole member of `bridge-crux:bridgecrux`
 - default `developers` team access: also read/write on all six packages
-- clean consumer installation: confirmed for `0.1.1`, including project-local
-  `.codex/skills`, one managed instruction block, and `bridgecrux doctor`
-- trusted publisher: all six `0.1.1` packages published successfully through
-  GitHub Actions OIDC without a local npm token
-- provenance limitation: npm generated no attestations for `0.1.1` because the
-  GitHub repository is private; npm provenance requires a public source repository
-
-The repository working release candidate is `0.2.0`. It is a breaking schema-2
-release with an explicit migration guide. Before trusted publication, the
-repository must be made public so npm can generate provenance; public visibility
-exposes source, history, and Actions logs. The repository secret/history audit
-for this transition found no credential-shaped values or Actions artifacts.
+- package publishing policy: all six packages require publish MFA and disallow
+  automation-token bypass; GitHub trusted publishing remains the release path
+- npm provenance: verified SLSA provenance on all six `0.2.0` packages
+- clean consumer installation: confirmed for `0.2.0` in a disposable temporary
+  directory, including exact kit and skills packages, project-local
+  `.codex/skills`, one managed instruction block, exact CLI version,
+  `bridgecrux doctor`, and provenance verification; the directory was removed
+- source release: annotated tag and GitHub Release
+  [`v0.2.0`](https://github.com/LycurgusxLycurgus/bridgecrux-system/releases/tag/v0.2.0)
+- public-transition audit: repository source, reachable history, and Actions
+  artifacts were checked before changing visibility; no credential-shaped values
+  or published artifacts were found
 
 The npm organization owns the package names. The dedicated npm team controls
 human access. GitHub Actions publishes through short-lived npm OIDC credentials;
