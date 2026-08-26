@@ -16,26 +16,26 @@ As of 2026-08-26:
 - default branch: `main`
 - repository visibility: public, so trusted publication can produce npm
   provenance
-- all six public packages: published at synchronized version `0.2.0` under
+- all six public packages: published at synchronized version `0.3.0` under
   `latest` by GitHub Actions run
-  [`29863303463`](https://github.com/LycurgusxLycurgus/bridgecrux-system/actions/runs/29863303463)
+  [`32991153674`](https://github.com/LycurgusxLycurgus/bridgecrux-system/actions/runs/32991153674)
+- published release commit: `492f21ecdc1bd43165ad0cad9f9860a614affd35`
 - dedicated `bridgecrux` team access: verified read/write on all six packages;
   `bridgecrux` is the sole member of `bridge-crux:bridgecrux`
 - default `developers` team access: also read/write on all six packages
 - package publishing policy: all six packages require publish MFA and disallow
   automation-token bypass; GitHub trusted publishing remains the release path
-- npm provenance: verified SLSA provenance on all six `0.2.0` packages
-- clean consumer installation: confirmed for `0.2.0` in a disposable temporary
+- npm provenance: verified SLSA provenance on all six `0.3.0` packages
+- clean consumer installation: confirmed for `0.3.0` in a disposable temporary
   directory, including exact kit and skills packages, project-local
   `.codex/skills`, one managed instruction block, exact CLI version,
   `bridgecrux doctor`, and provenance verification; the directory was removed
 - source release: annotated tag and GitHub Release
-  [`v0.2.0`](https://github.com/LycurgusxLycurgus/bridgecrux-system/releases/tag/v0.2.0)
+  [`v0.3.0`](https://github.com/LycurgusxLycurgus/bridgecrux-system/releases/tag/v0.3.0)
 - public-transition audit: repository source, reachable history, and Actions
   artifacts were checked before changing visibility; no credential-shaped values
   or published artifacts were found
-- next prepared candidate: `0.3.0`, a breaking schema-3 release. It is not
-  published until the release operator completes every gate in this document.
+- remaining release limitations: none
 
 The npm organization owns the package names. The dedicated npm team controls
 human access. GitHub Actions publishes through short-lived npm OIDC credentials;
@@ -87,8 +87,8 @@ packages and revoke any obsolete npm automation tokens.
 Start from a clean, current `main` checkout. Read `docs/stability.md`, the changes
 since the previous release, and the current npm versions. Choose one semantic
 version for all six packages; BridgeCrux does not release workspaces at
-independent versions. For 0.3.0, read `CHANGELOG.md` and the schema-3 migration
-section in `docs/installation.md` before preparing the release.
+independent versions. For a breaking release, read `CHANGELOG.md` and the
+matching migration section in `docs/installation.md` before preparing it.
 
 ```bash
 git switch main
