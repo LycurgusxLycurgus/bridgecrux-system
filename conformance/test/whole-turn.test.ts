@@ -6,7 +6,6 @@ import {
   DefaultRouterDecisionValidator,
   DefaultTurnController,
   DefaultUserCopyGate,
-  HandlerBindingRegistry,
   ProcessRegistry,
   InMemoryCruxRuntime,
   InMemoryReportStore,
@@ -15,6 +14,7 @@ import {
   SpecificFunctionRegistry,
   ToolOperationRegistry,
   type LedgerEvent,
+  type CapabilitySurfaceBinding,
   type PersistedMessage,
   type RawRouterDecision,
   type RouterDecisionAudit,
@@ -25,12 +25,16 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 const registry: RouteRegistryDefinition = {
+  surfaces: ["telegram"],
   routes: [
     {
       id: "records",
+      summary: "Inspect and complete durable records",
       intents: [
         {
           id: "complete",
+          summary: "Complete a record from sufficient evidence",
+          capabilityId: "records.complete",
           speechActs: ["announcement", "execution", "confirmation"],
           temporalStances: ["past", "present"],
           mutationClasses: ["complete_record"],
@@ -41,18 +45,24 @@ const registry: RouteRegistryDefinition = {
       ],
     },
   ],
-};
-
-const binding = {
-  route: "records",
-  intent: "complete",
-  handlerId: "records-controller",
-  allowedMutationClasses: ["complete_record"],
-  requiredState: ["records"],
-  operationIds: ["records.complete"],
-  executionPolicy: { mode: "hybrid" as const, thinkingLevel: "high" as const, toolIds: ["records.complete"] },
-  copySources: ["high_thinking_tutor" as const],
-  auditEvents: ["record.completed"],
+  capabilities: [{
+    id: "records.complete",
+    title: "Complete a record",
+    description: "Interpret evidence and persist the authorized completion",
+    route: "records",
+    intent: "complete",
+    handlerId: "records-controller",
+    operationIds: ["records.complete"],
+    executionPolicy: { mode: "hybrid", thinkingLevel: "high", toolIds: ["records.complete"] },
+    copySources: ["high_thinking_tutor"],
+    auditEvents: ["record.completed"],
+    surfaces: [
+      surface("conversation", ["natural-language evidence"], "authenticated"),
+      surface("headless", ["records.complete"], "internal"),
+      surface("telegram", ["Telegram conversation"], "authenticated"),
+    ],
+    interaction: { mode: "generated_choices", allowFreeText: true, minimumOptions: 2, maximumOptions: 4 },
+  }],
 };
 
 describe("whole-turn conformance", () => {
@@ -93,7 +103,6 @@ describe("whole-turn conformance", () => {
       },
     });
 
-    const bindings = new HandlerBindingRegistry([binding]);
     const tools = new ToolOperationRegistry();
     tools.register({
       definition: {
@@ -204,14 +213,11 @@ describe("whole-turn conformance", () => {
     const controller = new DefaultTurnController({
       router,
       validator: new DefaultRouterDecisionValidator(),
-      bindings,
       functions,
       tools,
       ports,
       copyGate: new DefaultUserCopyGate(),
       validationContext: (state) => ({
-        registry,
-        bindings: bindings.list(),
         referenceCandidates: [{ persistedId: "record-alpha", aliases: ["Record Alpha", "alpha"] }],
         availableState: state.availableState,
         evidencePolicies: { record_completion: { id: "record_completion", requiredDimensions: ["evidence", "result"] } },
@@ -251,6 +257,11 @@ describe("whole-turn conformance", () => {
       expect.objectContaining({ config: expect.objectContaining({ thinkingConfig: { thinkingLevel: "HIGH" } }) }),
       expect.objectContaining({ config: expect.objectContaining({ thinkingConfig: { thinkingLevel: "HIGH" } }) }),
     ]);
+    const routerRequest = modelCalls[0] as { contents: string };
+    const routerPayload = JSON.parse(routerRequest.contents.split("INPUT_JSON:\n")[1]!) as Record<string, unknown>;
+    expect(routerPayload).toHaveProperty("catalog");
+    expect(routerPayload).not.toHaveProperty("registry");
+    expect(JSON.stringify(routerPayload["catalog"])).not.toContain("handlerId");
     const activityBody = JSON.parse(String((send.mock.calls[0]?.[1] as RequestInit | undefined)?.body)) as Record<string, unknown>;
     expect(activityBody).toMatchObject({ chat_id: "42", action: "typing" });
     const deliveryBody = JSON.parse(String((send.mock.calls[1]?.[1] as RequestInit | undefined)?.body)) as Record<string, unknown>;
@@ -276,9 +287,11 @@ describe("deterministic process conformance", () => {
           mode: "closed_choice",
           control: {
             id: "choose",
+            kind: "deterministic_process",
             field: "answer",
             prompt: "Choose one option.",
             options: [{ id: "yes", label: "Yes", value: true }, { id: "no", label: "No", value: false }],
+            allowFreeText: false,
           },
         },
         executionPolicy: { mode: "deterministic", toolIds: [] },
@@ -290,10 +303,14 @@ describe("deterministic process conformance", () => {
       authoredCopy: { ready: "Choice saved.", partial: "Choose one option.", reject: "Choose one option.", clarify: "Choose one option." },
     }));
     const processRoute: RouteRegistryDefinition = {
+      surfaces: ["telegram"],
       routes: [{
         id: "process",
+        summary: "Advance an established process",
         intents: [{
           id: "answer",
+          summary: "Consume the active step's server-issued answer",
+          capabilityId: "process.answer",
           speechActs: ["execution", "other"],
           temporalStances: ["present"],
           mutationClasses: ["advance_process"],
@@ -301,19 +318,26 @@ describe("deterministic process conformance", () => {
           requiredState: [],
         }],
       }],
+      capabilities: [{
+        id: "process.answer",
+        title: "Answer the active process step",
+        description: "Consume one server-issued closed choice and advance in code",
+        route: "process",
+        intent: "answer",
+        handlerId: "onboarding-controller",
+        operationIds: ["process.advance"],
+        executionPolicy: { mode: "deterministic", toolIds: [] },
+        deterministicJustification: "The active step accepts only a scoped, replay-safe server-issued closed choice.",
+        copySources: ["authored_deterministic"],
+        auditEvents: ["process.advanced"],
+        surfaces: [
+          surface("conversation", ["issued choice"], "authenticated"),
+          surface("headless", ["process.answer"], "internal"),
+          surface("telegram", ["inline choice"], "authenticated"),
+        ],
+        interaction: { mode: "authored_choices", allowFreeText: false },
+      }],
     };
-    const processBinding = {
-      route: "process",
-      intent: "answer",
-      handlerId: "onboarding-controller",
-      allowedMutationClasses: ["advance_process"],
-      requiredState: [],
-      operationIds: ["process.advance"],
-      executionPolicy: { mode: "deterministic" as const, toolIds: [] as [] },
-      copySources: ["authored_deterministic" as const],
-      auditEvents: ["process.advanced"],
-    };
-    const bindings = new HandlerBindingRegistry([processBinding]);
     const operations = new OperationRegistry();
     const advance = vi.fn().mockImplementation(async (operation) => ({ operationId: operation.id, status: "succeeded" as const, persistedIds: [operation.target] }));
     operations.register({ operationId: "process.advance", execute: advance });
@@ -329,9 +353,11 @@ describe("deterministic process conformance", () => {
     const control = await runtime.interactions.issue({
       control: {
         id: "choose",
+        kind: "deterministic_process",
         field: "answer",
         prompt: "Choose one option.",
         options: [{ id: "yes", label: "Yes", value: true }, { id: "no", label: "No", value: false }],
+        allowFreeText: false,
       },
       userId: "user-1",
       sessionId: "session-1",
@@ -341,20 +367,17 @@ describe("deterministic process conformance", () => {
     });
     const router = { modelName: "must-not-run", decide: vi.fn() };
     const model = { structured: vi.fn(), tutor: vi.fn(), toolLoop: vi.fn() };
-    const send = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: true, result: { message_id: 600 } }), { status: 200 }));
+    const send = vi.fn().mockImplementation(async () => new Response(JSON.stringify({ ok: true, result: { message_id: 600 } }), { status: 200 }));
     const channel = new TelegramChannelAdapter({ token: "test", fetch: send, retryDelay: async () => undefined });
     const ports = runtime.ports({ operations: new DefaultOperationExecutor(operations), model: model as never, channel });
     const controller = new DefaultTurnController({
       router: router as never,
       validator: new DefaultRouterDecisionValidator(),
-      bindings,
       functions: new SpecificFunctionRegistry(),
       processes: processRegistry,
       ports,
       copyGate: new DefaultUserCopyGate(),
       validationContext: () => ({
-        registry: processRoute,
-        bindings: bindings.list(),
         referenceCandidates: [],
         availableState: [],
         evidencePolicies: {},
@@ -404,8 +427,44 @@ describe("deterministic process conformance", () => {
     expect(model.toolLoop).not.toHaveBeenCalled();
     expect(runtime.routerDecisions).toHaveLength(2);
     expect(runtime.routerDecisions.every((decision) => decision.model === undefined)).toBe(true);
+
+    router.decide.mockResolvedValue({
+      route: "process",
+      intent: "answer",
+      confidence: 1,
+      speechAct: "execution",
+      temporalStance: "present",
+      targetReferences: [],
+      stateMutationCandidate: "advance_process",
+      mutationEvidence: "positive",
+      safetyFlag: "none",
+      handlerTarget: "onboarding-controller",
+      extracted: { answer: true, targetStepId: "choose" },
+      reason: "Typed text resembles an option but is not a trusted structured choice",
+    });
+    const typed = await controller.handle({
+      ...input,
+      event: { update_id: 702, message: { message_id: 71, date: 1_700_000_000, text: "yes", from: { id: 42 }, chat: { id: 42 } } },
+    });
+    expect(typed.error).toBeUndefined();
+    expect(typed.status).toBe("completed");
+    expect(router.decide).toHaveBeenCalledOnce();
+    expect(advance).toHaveBeenCalledOnce();
   });
 });
+
+function surface(
+  surface: string,
+  entrypoints: string[],
+  access: CapabilitySurfaceBinding["access"],
+): CapabilitySurfaceBinding {
+  return {
+    surface,
+    entrypoints,
+    access,
+    states: { loading: "typing or pending", success: "delivered result", empty: "explicit empty result", error: "safe error" },
+  };
+}
 
 function routerDecision(): RawRouterDecision {
   return {

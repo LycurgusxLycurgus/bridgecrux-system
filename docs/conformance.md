@@ -1,6 +1,6 @@
 # Conformance
 
-BridgeCrux separates deterministic offline conformance from credentialed provider gates.
+BridgeCrux separates deterministic offline acceptance from credentialed provider checks.
 
 ## Full Offline Gate
 
@@ -8,49 +8,38 @@ BridgeCrux separates deterministic offline conformance from credentialed provide
 npm run build
 ```
 
-The command performs one release acceptance sequence:
+This is one release acceptance block: clean derived output, integrity-bundle the three skills, compile, typecheck source/tests, build the neutral schema-3 fixture, lint, and run core/content/Convex/Gemini/Telegram/kit/installer/whole-turn tests.
 
-1. remove derived build output;
-2. synchronize and hash all three skill bundles;
-3. compile every workspace package;
-4. typecheck package and test code;
-5. build the neutral canonical-content fixture;
-6. lint TypeScript sources and tests;
-7. run core, content, Convex, Gemini, Telegram, kit, installer, and whole-turn tests.
+The suite proves:
 
-Convex persistence tests run against `convex-test`, including actual schema
-indexes, transactions, structured-choice replay protection, and expiring turn
-leases. Gemini and Telegram offline tests use injected provider boundaries; they
-verify medium-thinking freeform routing, medium/high tool loops, schema handling,
-normalization, safe HTML, typing refresh, callback acknowledgement, inline
-controls, splitting, retries, provider ids, and structured errors without
-credentials.
+- capability-derived route/handler bindings and conversation/headless/declared-surface parity;
+- compact router input without handler, operation, lifecycle, or UI implementation detail;
+- medium-default routing and deterministic medium-vs-high evaluation;
+- deterministic callback progression with zero router/tutor/assessment/tool-model calls, while typed text still routes;
+- high hybrid and medium/high agentic enforcement with exact tool subsets;
+- validated 2–4 option generated interaction plans and shared Telegram callback round trips;
+- real Convex interaction replay protection, communication preferences, and expiring turn leases;
+- Gemini 3.5 Flash-Lite thinking/output/safety/no-sampling requests;
+- Telegram safe HTML, typing refresh, acknowledgement, controls, splitting, retry, IDs, and structured errors;
+- operation authorization, real in-memory persistence, truthful copy, delivery, and raw/validated audit.
 
-Whole-turn tests run neutral Telegram updates through the real Telegram
-normalization boundary, Gemini structured/tool adapter boundary, deterministic
-validator, execution-policy binding, idempotent operation, in-memory persistence,
-copy gate, Telegram delivery, and raw/validated audit records. One test proves a
-hybrid high-thinking tool mutation. Another proves that a trusted active-process
-choice performs its code-owned transition with zero router, assessment, tutor,
-or tool-model calls. Replaying either inbound event must not rerun its operation.
+`auditAllRouteSimulation` requires exactly one observation per route/intent and surface evidence per public capability. It rejects missing/duplicate paths, wrong capability bindings, surface divergence, policy contradictions, undeclared tools, model use on deterministic active choices, missing persistence, false success, and missing delivery/audit evidence.
 
-`auditAllRouteSimulation` is the public conformance helper for the one-table
-route simulation maintained by `$anticipate-crux-routes`. Every declared
-route/intent appears exactly once and asserts execution mode, thinking policy,
-model-call count, trusted structured input, tools, required operation,
-persistence, delivery, and audit. The helper rejects duplicates,
-contradictions, missing paths, model use on deterministic process turns, and
-undeclared tools. Use `InMemoryCruxRuntime` so those observations come from real
-in-memory message, interaction, lease, ledger, report, and audit persistence
-rather than mocked operation success.
-
-## Package Installation Gate
+## Packed Consumer Gate
 
 ```bash
 npm run pack:test
 ```
 
-This packs all public workspaces, installs their tarballs into a clean temporary ESM project, imports the umbrella package, runs the CLI, installs all three skills, and verifies the managed instruction block. No package is published by this command.
+This packs all six public workspaces, installs them into a clean ESM project, imports the umbrella, runs the CLI, installs project-local skills, verifies managed state and instructions, runs skill/runtime doctor, and removes the temporary consumer. It publishes nothing.
+
+## Release Metadata Gate
+
+```bash
+npm run release:verify -- 0.3.0
+```
+
+This checks synchronized package versions, internal dependency versions, package/repository metadata, the kit version constant, the skill manifest, and publish order assumptions.
 
 ## Live Gates
 
@@ -58,15 +47,15 @@ This packs all public workspaces, installs their tarballs into a clean temporary
 npm run test:live
 ```
 
-Each live test skips unless its explicit configuration exists:
+Tests skip unless explicitly configured:
 
-- Gemini: `GEMINI_API_KEY`; optional `BRIDGECRUX_GEMINI_MODEL` overrides the default `gemini-3.1-flash-lite`.
-- Telegram read-only authentication: `TELEGRAM_BOT_TOKEN`.
-- Telegram delivery: additionally set `BRIDGECRUX_LIVE_SEND=1` and `TELEGRAM_TEST_CHAT_ID`.
-- Convex: `CONVEX_URL` and `BRIDGECRUX_CONVEX_HEALTH_FUNCTION`, naming a public query that accepts `{}`.
+- Gemini: `GEMINI_API_KEY`; optional `BRIDGECRUX_GEMINI_MODEL` overrides `gemini-3.5-flash-lite`.
+- Telegram authentication: `TELEGRAM_BOT_TOKEN`.
+- Telegram delivery: additionally `BRIDGECRUX_LIVE_SEND=1` and `TELEGRAM_TEST_CHAT_ID`.
+- Convex: `CONVEX_URL` and `BRIDGECRUX_CONVEX_HEALTH_FUNCTION`.
 
 Live Telegram delivery is opt-in because it creates an external message. Tests never print credentials.
 
 ## Supported Runtimes
 
-Release automation should run the offline gate on Node.js 22 and 24. Package manifests reject Node versions below 22. The repository is ESM-only.
+Release automation runs Node.js 22 and 24. Packages are ESM-only and reject Node versions below 22.

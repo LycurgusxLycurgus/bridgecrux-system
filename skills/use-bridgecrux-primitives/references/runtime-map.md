@@ -1,13 +1,13 @@
-# BridgeCrux 0.2 Runtime Map
+# BridgeCrux 0.3 Runtime Map
 
 ## Packages
 
-- `@bridge-crux/core`: provider-neutral route, execution-policy, process, interaction, turn-lease, operation, validation, copy, memory, report, and in-memory conformance contracts.
-- `@bridge-crux/content`: schema-2 canonical Markdown discovery, execution-policy and structured-process validation, cross-reference checks, manifests, route checklists, handler stubs, regression scenarios, and deterministic TypeScript output.
-- `@bridge-crux/convex`: composable framework tables and repository ports for state, audit, ledger, idempotency, structured interactions, expiring turn leases, processes, memory, reports, and jobs.
-- `@bridge-crux/adapters`: Gemini medium/high model execution and Telegram normalization, safe HTML, typing refresh, callback acknowledgement, inline controls, delivery, retry, and transport errors.
-- `@bridge-crux/kit`: supported public re-exports and the `bridgecrux` build, validate, and doctor commands.
-- `@bridge-crux/skills`: installs all BridgeCrux skills and maintains their registration block in consumer instructions.
+- `@bridge-crux/core`: provider-neutral schema-3 capability/surface, compact routing, execution, process, interaction, operation, validation, copy, audit, lease, routing-evaluation, and in-memory conformance contracts.
+- `@bridge-crux/content`: schema-3 canonical discovery, validation, capability/surface manifest, route/process regression artifacts, and generated headless surface.
+- `@bridge-crux/convex`: composable state, messages, audit, ledger, idempotency, interactions, communication preferences, leases, processes, memory, reports, and jobs.
+- `@bridge-crux/adapters`: Gemini 3.5 Flash-Lite structured routing/tutoring/tool loop and Telegram normalization, safe HTML, shared control codec, typing, acknowledgement, delivery, retry, and errors.
+- `@bridge-crux/kit`: supported public exports plus `bridgecrux build|validate|evaluate-routing|doctor`.
+- `@bridge-crux/skills`: integrity-bundled project-local skills with transactional install/update/uninstall/doctor and a bounded managed instruction block.
 
 ## Canonical Consumer Shape
 
@@ -16,37 +16,56 @@ cruxes/<crux-id>/
   crux.config.json
   system.prompt.md
   assistants.md
-  specific-functions/
-    *.md
-    processes.md
+  specific-functions/*.md
+
+generated/
+  manifest.generated.json
+  routes.generated.ts
+  capability-surface.generated.md
 
 src/<feature>/
-  route registry and execution-policy bindings
+  capability-derived registry and controllers
   domain operation handlers
   BridgeCrux composition
 
 convex/
   schema.ts composed with bridgeCruxTables
-  thin mutations/queries/actions using ConvexBridgeCruxRepository and repositoryPorts
+  thin functions using ConvexBridgeCruxRepository
+
+.codex/skills/
+  .bridgecrux-skills.json
+  anticipate-crux-routes/
+  use-bridgecrux-primitives/
+  write-crux-prompts/
 ```
 
 ## Execution Authority
 
-- Freeform routing always uses medium thinking and returns a non-authoritative raw decision.
-- Every route/intent and established process step declares its execution policy before entry.
-- `deterministic` runs code after routing; an active deterministic process bypasses routing only for a server-issued, replay-safe closed choice and makes zero model calls.
-- `hybrid` uses a predeclared medium/high assessment with only process-scoped tools; schema and domain validation authorize progression.
-- `model` uses medium for knowledge/simple work or high for agentic work with only route-scoped tools.
-- Code exclusively authorizes operations, persistence, completion, idempotency, and truthful success copy.
-- Each crux/channel/user/thread turn is serialized by an expiring correlation-owned lease.
+- User-authored text receives a compact medium-thinking route/intent decision. Full capabilities are attached after deterministic validation.
+- A validated capability fixes handler, operations, execution mode, thinking, tools, copy, audit, interaction, lifecycle, and surfaces.
+- An active deterministic server-issued closed choice may bypass routing and makes zero model calls. Typed text routes.
+- Hybrid is high-thinking and code validates every proposed interpretation or generated choice.
+- Agentic work is medium for knowledge-only interaction and high for complex or any tool-using work.
+- Code alone authorizes operations, persistence, idempotency, completion, and success claims.
 
 ## CLI
 
-- `bridgecrux build --root <crux-dir> --out <generated-dir>` validates and writes deterministic artifacts.
-- `bridgecrux validate --root <crux-dir>` validates without writing.
-- `bridgecrux doctor [--project <app-root>]` checks the local runtime and reports credential presence without printing values.
-- `bridgecrux-skills install --target <skills-root> --project <app-root>` installs the coordinator and two authoring skills and updates project instructions.
+```sh
+bridgecrux validate --root <crux-dir> --operations <operations.json>
+bridgecrux build --root <crux-dir> --operations <operations.json> --out <generated-dir>
+bridgecrux evaluate-routing --cases <cases.json> --observations <observations.json>
+bridgecrux doctor --project <app-root>
 
-## Stable And Experimental Surface
+bridgecrux-skills install --project <app-root>
+bridgecrux-skills update --project <app-root>
+bridgecrux-skills doctor --project <app-root>
+bridgecrux-skills uninstall --project <app-root>
+```
 
-The stable 0.2 surface includes raw/validated decision separation, predeclared execution policies, schema-2 content, structured processes, Convex interactions and turn leases, Gemini medium/high execution, Telegram structured controls, in-memory conformance, CLI behavior, and skill installation. Generic multi-signal orchestration, additional providers and persistence backends, broad copy linting, memory proposal semantics, and repair workflows remain experimental until more production cruxes prove them.
+Project-local `.codex/skills` is the default. `--global` is explicit. Managed files are hash-checked; modified or unmanaged collisions require explicit `--force`, and writes are staged with rollback.
+
+## Stable And Experimental
+
+Stable in 0.3: schema-3 capability-first content, semantic surface parity, compact hierarchical routing, routing evaluation, raw/validated separation, fixed execution policy, generated interaction validation, structured processes, Convex interactions/preferences/leases, Gemini 3.5 policy, Telegram controls/activity, generated headless manifests, CLI diagnostics, safe skill lifecycle, and real-persistence conformance.
+
+Still experimental: broad multi-signal orchestration, additional model providers and persistence backends, broad multilingual copy linting, automatic memory-proposal semantics, and automatic repairs.

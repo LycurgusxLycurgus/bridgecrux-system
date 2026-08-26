@@ -8,7 +8,7 @@ describe("live adapter gates", () => {
     "accepts a real Gemini structured response",
     async () => {
       const model = new GeminiModelClient();
-      const result = await model.structured({
+      const result = await model.structured<{ status: "ok" }>({
         purpose: "assessment",
         ...(process.env.BRIDGECRUX_GEMINI_MODEL ? { model: process.env.BRIDGECRUX_GEMINI_MODEL } : {}),
         prompt: "Return the requested health status as JSON.",
@@ -21,7 +21,6 @@ describe("live adapter gates", () => {
         },
         correlationId: "live-gemini",
         thinkingLevel: "high",
-        temperature: 0,
         parse(value) {
           if (!record(value) || value.status !== "ok") throw new Error("Gemini live response did not match the health schema");
           return { status: "ok" as const };

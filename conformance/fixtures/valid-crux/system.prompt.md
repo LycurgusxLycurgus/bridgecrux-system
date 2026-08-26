@@ -1,7 +1,7 @@
 ---
 name: neutral-conformance-system
 description: Operate the neutral conformance task surface truthfully.
-version: 0.2.0
+version: 0.3.0
 ---
 
 # Neutral Conformance System Prompt

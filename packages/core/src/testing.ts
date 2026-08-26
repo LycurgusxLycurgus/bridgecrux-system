@@ -38,6 +38,7 @@ export class InMemoryCruxRuntime {
       cruxId: string;
       userId?: string;
       externalId?: string;
+      communicationStyle?: "casual" | "pragmatic";
       sessionId?: string;
       channel?: string;
       conversationWindow?: number;
@@ -138,6 +139,7 @@ export class InMemoryCruxRuntime {
         id: this.options.userId ?? "user-1",
         externalId: this.options.externalId ?? inbound.userExternalId,
         channel: this.options.channel ?? inbound.channel,
+        ...(this.options.communicationStyle ? { communicationStyle: this.options.communicationStyle } : {}),
       },
       session: {
         id: this.options.sessionId ?? "session-1",
@@ -172,9 +174,10 @@ function countBy(values: string[]): Record<string, number> {
 
 export type RouteSimulationObservation = {
   pathId: string;
+  capabilityId: string;
   route: string;
   intent: string;
-  executionMode: "deterministic" | "hybrid" | "model";
+  executionMode: "deterministic" | "hybrid" | "agentic";
   thinkingLevel?: "medium" | "high";
   modelCallCount: number;
   activeProcessTurn: boolean;
@@ -189,6 +192,7 @@ export type RouteSimulationObservation = {
   activityStatus: "started" | "not_supported";
   delivered: boolean;
   audited: boolean;
+  surfaceResults: Record<string, boolean>;
 };
 
 export function auditAllRouteSimulation(input: {
@@ -211,6 +215,12 @@ export function auditAllRouteSimulation(input: {
       issues.push(`${pathId} has no handler binding`);
       continue;
     }
+    const capability = input.registry.capabilities.find((candidate) => `${candidate.route}/${candidate.intent}` === pathId);
+    if (!capability) {
+      issues.push(`${pathId} has no capability contract`);
+      continue;
+    }
+    if (row.capabilityId !== capability.id) issues.push(`${pathId} simulated capability ${row.capabilityId} but declares ${capability.id}`);
     if (row.executionMode !== binding.executionPolicy.mode) issues.push(`${pathId} simulated ${row.executionMode} but declares ${binding.executionPolicy.mode}`);
     if (row.turnLeaseStatus !== "acquired") issues.push(`${pathId} did not acquire its turn lease`);
     if (binding.executionPolicy.mode === "deterministic") {
@@ -233,6 +243,9 @@ export function auditAllRouteSimulation(input: {
     if (!row.persisted) issues.push(`${pathId} did not prove persistence or a deliberate no-op`);
     if (!row.delivered) issues.push(`${pathId} did not prove user delivery`);
     if (!row.audited) issues.push(`${pathId} did not prove audit evidence`);
+    for (const surface of ["conversation", "headless", ...input.registry.surfaces]) {
+      if (row.surfaceResults[surface] !== true) issues.push(`${pathId} did not prove ${surface} surface parity`);
+    }
   }
   for (const row of input.observations) {
     if (!expected.includes(`${row.route}/${row.intent}`)) issues.push(`${row.pathId} simulates undeclared path ${row.route}/${row.intent}`);

@@ -1,7 +1,7 @@
 ---
 id: neutral-sequence
 kind: process
-version: 0.2.0
+version: 0.3.0
 entry_routes:
   - records
 advance_operation: process.advance

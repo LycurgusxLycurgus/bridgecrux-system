@@ -162,11 +162,16 @@ export const bridgeCruxTables = {
   bridgecruxInteractions: defineTable({
     userId: v.id("bridgecruxUsers"),
     sessionId: v.id("bridgecruxSessions"),
-    processRunId: v.id("bridgecruxProcessRuns"),
-    stepId: v.string(),
+    controlKind: v.union(v.literal("deterministic_process"), v.literal("generated_clarification")),
+    processRunId: v.optional(v.id("bridgecruxProcessRuns")),
+    stepId: v.optional(v.string()),
+    capabilityId: v.optional(v.string()),
+    route: v.optional(v.string()),
+    intent: v.optional(v.string()),
     field: v.string(),
     prompt: v.string(),
     optionsJson: v.string(),
+    allowFreeText: v.boolean(),
     status: v.union(v.literal("issued"), v.literal("consumed"), v.literal("expired")),
     correlationId: v.string(),
     expiresAt: v.optional(v.number()),
@@ -175,6 +180,15 @@ export const bridgeCruxTables = {
   })
     .index("by_session_status", ["sessionId", "status"])
     .index("by_process_step_status", ["processRunId", "stepId", "status"]),
+
+  bridgecruxPreferences: defineTable({
+    userId: v.id("bridgecruxUsers"),
+    cruxId: v.string(),
+    communicationStyle: v.union(v.literal("casual"), v.literal("pragmatic")),
+    contractVersion: v.string(),
+    source: v.union(v.literal("developer_default"), v.literal("user_selected"), v.literal("migration")),
+    updatedAt: v.number(),
+  }).index("by_user_crux", ["userId", "cruxId"]),
 
   bridgecruxTurnLeases: defineTable({
     key: v.string(),

@@ -77,6 +77,7 @@ export class TelegramChannelAdapter implements ChannelAdapter {
   }
 
   async formatOutbound(message: OutboundMessage): Promise<ChannelOutboundPayload[]> {
+    if (message.controls?.length) telegramKeyboard(message.controls);
     const destination = message.threadId?.split(":", 1)[0] ?? message.userId;
     const chunks = splitTelegramText(message.text, this.#maxLength);
     return chunks.map((text, index) => ({
@@ -298,19 +299,27 @@ function normalizeCallbackQuery(updateId: number, callback: Record<string, unkno
 }
 
 function parseChoiceCallback(value: string): { interactionId: string; optionId: string } | undefined {
+  return decodeTelegramChoiceCallback(value);
+}
+
+export function decodeTelegramChoiceCallback(value: string): { interactionId: string; optionId: string } | undefined {
   const match = value.match(/^bc:([A-Za-z0-9_-]+):([A-Za-z0-9_-]+)$/u);
   return match?.[1] && match[2] ? { interactionId: match[1], optionId: match[2] } : undefined;
+}
+
+export function encodeTelegramChoiceCallback(interactionId: string, optionId: string): string {
+  if (!/^[A-Za-z0-9_-]+$/u.test(interactionId) || !/^[A-Za-z0-9_-]+$/u.test(optionId)) {
+    throw new Error("Telegram choice ids may contain only letters, numbers, underscore, and hyphen");
+  }
+  const callbackData = `bc:${interactionId}:${optionId}`;
+  if (Buffer.byteLength(callbackData, "utf8") > 64) throw new Error("Telegram choice callback data exceeds 64 bytes");
+  return callbackData;
 }
 
 function telegramKeyboard(controls: ChoiceControl[]) {
   const buttons = controls.flatMap((control) =>
     control.options.map((option) => {
-      if (!/^[A-Za-z0-9_-]+$/u.test(control.id) || !/^[A-Za-z0-9_-]+$/u.test(option.id)) {
-        throw new Error("Telegram choice ids may contain only letters, numbers, underscore, and hyphen");
-      }
-      const callbackData = `bc:${control.id}:${option.id}`;
-      if (Buffer.byteLength(callbackData, "utf8") > 64) throw new Error("Telegram choice callback data exceeds 64 bytes");
-      return { text: option.label, callback_data: callbackData };
+      return { text: option.label, callback_data: encodeTelegramChoiceCallback(control.id, option.id) };
     }),
   );
   const inline_keyboard: { text: string; callback_data: string }[][] = [];

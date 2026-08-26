@@ -16,16 +16,83 @@ export type MutationEvidence = "positive" | "insufficient" | "negative";
 export type SafetyFlag = "none" | "possible" | "urgent";
 export type ValidationStatus = "accepted" | "corrected" | "clarification" | "blocked";
 export type CompositeStatus = "single" | "compatible" | "clarification" | "partially_blocked";
-export type TurnExecutionMode = "deterministic" | "hybrid" | "model";
+export type TurnExecutionMode = "deterministic" | "hybrid" | "agentic";
 export type ModelThinkingLevel = "medium" | "high";
 
 export type ExecutionPolicy =
   | { mode: "deterministic"; thinkingLevel?: never; toolIds: [] }
-  | { mode: "hybrid" | "model"; thinkingLevel: ModelThinkingLevel; toolIds: string[] };
+  | { mode: "hybrid"; thinkingLevel: "high"; toolIds: string[] }
+  | { mode: "agentic"; thinkingLevel: ModelThinkingLevel; toolIds: string[] };
 
 export type ProcessExecutionPolicy =
   | { mode: "deterministic"; thinkingLevel?: never; toolIds: [] }
-  | { mode: "hybrid"; thinkingLevel: ModelThinkingLevel; toolIds: string[] };
+  | { mode: "hybrid"; thinkingLevel: "high"; toolIds: string[] };
+
+export type CommunicationStyle = "casual" | "pragmatic";
+
+export type CommunicationStyleContract = {
+  available: CommunicationStyle[];
+  default: CommunicationStyle;
+  selection: "developer_fixed" | "user_selectable";
+};
+
+export type CapabilitySurfaceBinding = {
+  surface: string;
+  entrypoints: string[];
+  access: "public" | "authenticated" | "owner" | "internal";
+  states: {
+    loading: string;
+    success: string;
+    error: string;
+    empty?: string;
+  };
+  presentationOnly?: boolean;
+  rationale?: string;
+};
+
+export type CapabilityInteractionPolicy =
+  | { mode: "none" }
+  | { mode: "authored_choices"; allowFreeText: false }
+  | { mode: "generated_choices"; allowFreeText: true; minimumOptions: 2; maximumOptions: 4 };
+
+export type CapabilityLifecycleContract = {
+  createOperationId: string;
+  persistOperationId: string;
+  rediscoverOperationId: string;
+  reopenOperationId: string;
+  archiveOperationId?: string;
+  deleteOperationId?: string;
+  noveltyPolicy: "required" | "not_applicable";
+  idempotency: "required" | "not_applicable";
+};
+
+export type DestructiveActionContract = {
+  confirmation: "server_issued";
+  ownership: "required";
+  expiryMs: number;
+  singleUse: true;
+  auditEvent: string;
+};
+
+export type CapabilityContract = {
+  id: string;
+  title: string;
+  description: string;
+  route: string;
+  intent: string;
+  handlerId: string;
+  operationIds: string[];
+  executionPolicy: ExecutionPolicy;
+  copySources: UserCopySource[];
+  auditEvents: string[];
+  surfaces: CapabilitySurfaceBinding[];
+  interaction: CapabilityInteractionPolicy;
+  deterministicJustification?: string;
+  lifecycle?: CapabilityLifecycleContract;
+  destructiveAction?: DestructiveActionContract;
+  internalOnly?: boolean;
+  internalReason?: string;
+};
 
 export type RuntimeCapabilityGapType =
   | "software_capability"
@@ -44,7 +111,11 @@ export type AuditDefectType =
   | "composite_coverage"
   | "handler_binding"
   | "extractor_binding"
-  | "execution_policy";
+  | "execution_policy"
+  | "capability_parity"
+  | "route_overlap"
+  | "affordance_binding"
+  | "lifecycle_contract";
 
 export type TargetReference = {
   raw: string;
@@ -81,6 +152,7 @@ export type RawRouterDecision = RawTaskSignalDecision & {
 };
 
 export type ValidatedTaskSignalDecision = RawTaskSignalDecision & {
+  capabilityId: string;
   validationStatus: ValidationStatus;
   validationCodes: string[];
   resolvedReferences: ResolvedReference[];
@@ -95,6 +167,9 @@ export type ValidatedRouterDecision = ValidatedTaskSignalDecision & {
 
 export type IntentContract = {
   id: string;
+  summary: string;
+  capabilityId: string;
+  aliases?: string[];
   speechActs: SpeechAct[];
   temporalStances: TemporalStance[];
   mutationClasses: string[];
@@ -106,11 +181,26 @@ export type IntentContract = {
 
 export type RouteContract = {
   id: string;
+  summary: string;
   intents: IntentContract[];
 };
 
 export type RouteRegistryDefinition = {
+  surfaces: string[];
   routes: RouteContract[];
+  capabilities: CapabilityContract[];
+};
+
+export type CompactRoutingIntent = Pick<IntentContract, "id" | "summary" | "aliases">;
+
+export type CompactRoutingRoute = {
+  id: string;
+  summary: string;
+  intents: CompactRoutingIntent[];
+};
+
+export type CompactRoutingCatalog = {
+  routes: CompactRoutingRoute[];
 };
 
 export type RuntimeUser = {
@@ -120,6 +210,7 @@ export type RuntimeUser = {
   locale?: string;
   timezone?: string;
   displayName?: string;
+  communicationStyle?: CommunicationStyle;
 };
 
 export type RuntimeSession = {
@@ -214,8 +305,13 @@ export type StructuredChoiceInteraction = {
 };
 
 export type TrustedChoiceInteraction = StructuredChoiceInteraction & {
-  processRunId: string;
-  stepId: string;
+  kind: "choice";
+  controlKind: "deterministic_process" | "generated_clarification";
+  processRunId?: string;
+  stepId?: string;
+  capabilityId?: string;
+  route?: string;
+  intent?: string;
   field: string;
   value: JsonValue;
 };
@@ -303,7 +399,7 @@ export type RuntimeJobQueue = {
 
 export type RouterInput = {
   message: NormalizedInboundMessage;
-  registry: RouteRegistryDefinition;
+  catalog: CompactRoutingCatalog;
   state: CruxStateBundle;
   declaredOperations: string[];
   safetyPolicies: string[];
@@ -386,6 +482,7 @@ export type CapabilityGapGate = {
 };
 
 export type HandlerBinding = {
+  capabilityId: string;
   route: string;
   intent: string;
   handlerId: string;
@@ -456,6 +553,7 @@ export type ResponsePlan = {
   successClaims: string[];
   requiredOperationIds?: string[];
   controls?: ChoiceControl[];
+  interactionPlans?: InteractionPlan[];
   toolIds?: string[];
 };
 
@@ -467,12 +565,31 @@ export type ChoiceOption = {
 
 export type ChoiceControl = {
   id: string;
+  kind: "deterministic_process" | "generated_clarification";
   stepId?: string;
+  capabilityId?: string;
+  route?: string;
+  intent?: string;
   field: string;
   prompt: string;
   options: ChoiceOption[];
+  allowFreeText: boolean;
   expiresAt?: number;
 };
+
+export type InteractionPlan = {
+  capabilityId: string;
+  route: string;
+  intent: string;
+  prompt: string;
+  field: string;
+  options: ChoiceOption[];
+  expiresAt?: number;
+};
+
+export type InteractionPlanValidationResult =
+  | { ok: true; control: ChoiceControl }
+  | { ok: false; issues: string[] };
 
 export type OperationPlan = {
   operations: CruxOperation[];
@@ -617,7 +734,6 @@ export type StructuredModelRequest<T> = {
   input: unknown;
   schema: JsonValue;
   correlationId: string;
-  temperature?: number;
   thinkingLevel?: ModelThinkingLevel;
   parse(value: unknown): T;
 };
@@ -712,8 +828,8 @@ export type StructuredInteractionStore = {
     control: ChoiceControl;
     userId: string;
     sessionId: string;
-    processRunId: string;
-    stepId: string;
+    processRunId?: string;
+    stepId?: string;
     correlationId: string;
   }): Promise<ChoiceControl>;
   consume(input: {

@@ -8,7 +8,6 @@ import type {
   HandlerInput,
   HandlerResult,
   JsonValue,
-  NormalizedInboundMessage,
   ModelClient,
   OperationResult,
   OutboundMessage,
@@ -32,10 +31,12 @@ import type {
   UserCopyGate,
   ValidatedProcessInput,
   ValidatedTaskSignalDecision,
+  TrustedChoiceInteraction,
 } from "./contracts.js";
+import { compactRoutingCatalog, validateInteractionPlan } from "./capabilities.js";
+import { HandlerBindingRegistry } from "./registry.js";
 import type {
   ProcessRegistry,
-  HandlerBindingRegistry,
   SpecificFunctionRegistry,
   ToolOperationRegistry,
 } from "./registry.js";
@@ -43,13 +44,12 @@ import type {
 export type TurnControllerOptions = {
   router: TaskSignalRouter;
   validator: RouterDecisionValidator;
-  bindings: HandlerBindingRegistry;
   functions: SpecificFunctionRegistry;
   processes?: ProcessRegistry;
   tools?: ToolOperationRegistry;
   ports: RuntimePorts;
   copyGate: UserCopyGate;
-  validationContext(state: Parameters<RouterValidationContextFactory>[0]): RouterValidationContext;
+  validationContext(state: Parameters<RouterValidationContextFactory>[0]): ReturnType<RouterValidationContextFactory>;
   tutor: {
     model?: string;
     systemPrompt: string;
@@ -60,7 +60,9 @@ export type TurnControllerOptions = {
   turnLeaseMs?: number;
 };
 
-type RouterValidationContextFactory = (state: Awaited<ReturnType<RuntimePorts["state"]["load"]>>) => RouterValidationContext;
+type RouterValidationContextFactory = (
+  state: Awaited<ReturnType<RuntimePorts["state"]["load"]>>,
+) => Omit<RouterValidationContext, "registry" | "bindings">;
 
 /** @experimental Generic turn orchestration requires validation against a second real crux before stabilization. */
 export class DefaultTurnController implements TurnController {
@@ -102,13 +104,26 @@ export class DefaultTurnController implements TurnController {
         inbound,
         conversationWindow: input.conversationWindow,
       });
+      const bindings = HandlerBindingRegistry.fromDefinition(input.registry);
       const activeProcessController = state.activeProcess ? this.options.processes?.resolve(state.activeProcess.processId) : undefined;
-      const deterministicProcessTurn = activeProcessController?.executionPolicy(state.activeProcess!).mode === "deterministic";
+      const trustedInteraction =
+        inbound.interaction && this.options.ports.interactions
+          ? await this.options.ports.interactions.consume({
+              interaction: inbound.interaction,
+              userId: state.user.id,
+              sessionId: state.session.id,
+            })
+          : undefined;
+      const deterministicProcessTurn =
+        Boolean(inbound.interaction) && activeProcessController?.executionPolicy(state.activeProcess!).mode === "deterministic";
+      const generatedChoiceTurn = trustedInteraction?.controlKind === "generated_clarification";
       const raw = deterministicProcessTurn
-        ? await this.#deterministicProcessDecision(input, inbound, state, activeProcessController!)
+        ? this.#deterministicProcessDecision(input, state, activeProcessController!, trustedInteraction, bindings)
+        : generatedChoiceTurn
+          ? this.#generatedChoiceDecision(input, trustedInteraction, bindings)
         : await this.options.router.decide({
             message: inbound,
-            registry: input.registry,
+            catalog: compactRoutingCatalog(input.registry),
             state,
             declaredOperations: input.declaredOperations,
             safetyPolicies: input.safetyPolicies,
@@ -120,11 +135,14 @@ export class DefaultTurnController implements TurnController {
         cruxId: input.cruxId,
         sessionId: state.session.id,
         correlationId,
-        ...(!deterministicProcessTurn && this.options.router.modelName ? { model: this.options.router.modelName } : {}),
+        ...(!deterministicProcessTurn && !generatedChoiceTurn && this.options.router.modelName ? { model: this.options.router.modelName } : {}),
         createdAt: this.#now(),
       });
 
-      let decision = this.options.validator.validate({ decision: raw, context: this.options.validationContext(state) });
+      let decision = this.options.validator.validate({
+        decision: raw,
+        context: { ...this.options.validationContext(state), registry: input.registry, bindings: bindings.list() },
+      });
       if (deterministicProcessTurn && decision.validationStatus === "clarification") {
         decision = {
           ...decision,
@@ -140,14 +158,14 @@ export class DefaultTurnController implements TurnController {
         cruxId: input.cruxId,
         sessionId: state.session.id,
         correlationId,
-        ...(!deterministicProcessTurn && this.options.router.modelName ? { model: this.options.router.modelName } : {}),
+        ...(!deterministicProcessTurn && !generatedChoiceTurn && this.options.router.modelName ? { model: this.options.router.modelName } : {}),
         createdAt: this.#now(),
       });
 
       const executable = decision.compositeStatus === "clarification" ? [] : [decision, ...decision.additionalSignals].filter(canExecute);
       const executions: { signal: ValidatedTaskSignalDecision; binding: HandlerBinding; plan: HandlerResult }[] = [];
       for (const signal of executable) {
-        const binding = this.options.bindings.resolve(signal.route, signal.intent);
+        const binding = bindings.resolve(signal.route, signal.intent);
         const handlerId = signal.validatedHandlerTarget;
         const controller = handlerId ? this.options.functions.resolve(handlerId) : undefined;
         const processController = state.activeProcess && activeProcessController?.handlerId === handlerId ? activeProcessController : undefined;
@@ -195,8 +213,8 @@ export class DefaultTurnController implements TurnController {
       if (ledger.length > 0) await this.options.ports.audit.appendLedger(ledger);
 
       const responsePlans = executions.map((execution) => execution.plan.responsePlan);
-      const thinkingLevel = resolveTurnThinkingLevel({ decision, bindings: this.options.bindings });
-      const text = await this.#renderCopy(input, state, decision, operationResults, responsePlans, thinkingLevel);
+      const thinkingLevel = resolveTurnThinkingLevel({ decision, bindings });
+      const text = await this.#renderCopy(input, state, decision, operationResults, responsePlans, thinkingLevel, bindings);
       const source = selectCopySource(responsePlans, thinkingLevel);
       const copyResult = this.options.copyGate.validate({
         source,
@@ -209,9 +227,20 @@ export class DefaultTurnController implements TurnController {
       if (!copyResult.ok) {
         await this.options.ports.reports.create({ ...copyResult.report, cruxId: input.cruxId, correlationId });
       }
-      const plannedControls = responsePlans.flatMap((plan) => plan.controls ?? []);
-      if (plannedControls.length > 0 && (!state.activeProcess || !this.options.ports.interactions)) {
-        throw new Error("Structured process controls require an active process and interaction store");
+      const authoredControls = responsePlans.flatMap((plan) => plan.controls ?? []);
+      if (authoredControls.some((control) => control.kind !== "deterministic_process")) {
+        throw new Error("Generated clarification controls must be emitted as validated interactionPlans");
+      }
+      const generatedControls = responsePlans.flatMap((plan) =>
+        (plan.interactionPlans ?? []).map((interactionPlan) => {
+          const validation = validateInteractionPlan(interactionPlan, input.registry, this.#now());
+          if (!validation.ok) throw new Error(`Generated interaction plan is invalid: ${validation.issues.join("; ")}`);
+          return validation.control;
+        }),
+      );
+      const plannedControls = [...authoredControls, ...generatedControls];
+      if (plannedControls.length > 0 && !this.options.ports.interactions) {
+        throw new Error("Structured controls require an interaction store");
       }
       const controls =
         plannedControls.length > 0
@@ -221,8 +250,9 @@ export class DefaultTurnController implements TurnController {
                   control,
                   userId: state.user.id,
                   sessionId: state.session.id,
-                  processRunId: state.activeProcess!.runId,
-                  stepId: state.activeProcess!.activeStepId,
+                  ...(control.kind === "deterministic_process" && state.activeProcess
+                    ? { processRunId: state.activeProcess.runId, stepId: state.activeProcess.activeStepId }
+                    : {}),
                   correlationId,
                 }),
               ),
@@ -275,25 +305,18 @@ export class DefaultTurnController implements TurnController {
     }
   }
 
-  async #deterministicProcessDecision(
+  #deterministicProcessDecision(
     input: TurnInput,
-    inbound: NormalizedInboundMessage,
     state: Awaited<ReturnType<RuntimePorts["state"]["load"]>>,
     controller: ProcessController,
-  ): Promise<RawRouterDecision> {
+    trusted: TrustedChoiceInteraction | undefined,
+    bindings: HandlerBindingRegistry,
+  ): RawRouterDecision {
     const process = state.activeProcess!;
     const intent = input.registry.routes
       .find((route) => route.id === controller.route)
       ?.intents.find((candidate) => candidate.id === controller.intent);
-    const binding = this.options.bindings.resolve(controller.route, controller.intent);
-    const trusted =
-      inbound.interaction && this.options.ports.interactions
-        ? await this.options.ports.interactions.consume({
-            interaction: inbound.interaction,
-            userId: state.user.id,
-            sessionId: state.session.id,
-          })
-        : undefined;
+    const binding = bindings.resolve(controller.route, controller.intent);
     const matchesActiveStep = trusted?.processRunId === process.runId && trusted.stepId === process.activeStepId;
     return {
       route: controller.route,
@@ -319,6 +342,31 @@ export class DefaultTurnController implements TurnController {
     };
   }
 
+  #generatedChoiceDecision(
+    input: TurnInput,
+    trusted: TrustedChoiceInteraction,
+    bindings: HandlerBindingRegistry,
+  ): RawRouterDecision {
+    const capability = input.registry.capabilities.find((candidate) => candidate.id === trusted.capabilityId);
+    const route = trusted.route ?? capability?.route ?? "";
+    const intent = trusted.intent ?? capability?.intent ?? "";
+    const binding = bindings.resolve(route, intent);
+    return {
+      route,
+      intent,
+      confidence: 1,
+      speechAct: "execution",
+      temporalStance: "present",
+      targetReferences: [],
+      stateMutationCandidate: "none",
+      mutationEvidence: "insufficient",
+      safetyFlag: "none",
+      ...(binding ? { handlerTarget: binding.handlerId } : {}),
+      extracted: { [trusted.field]: trusted.value, __bridgecruxTrustedGeneratedChoice: true },
+      reason: "A server-validated generated clarification choice selected a declared capability without authorizing persistence",
+    };
+  }
+
   async #renderCopy(
     input: TurnInput,
     state: Awaited<ReturnType<RuntimePorts["state"]["load"]>>,
@@ -326,6 +374,7 @@ export class DefaultTurnController implements TurnController {
     operationResults: OperationResult[],
     plans: ResponsePlan[],
     thinkingLevel: "medium" | "high",
+    bindings: HandlerBindingRegistry,
   ): Promise<string> {
     const validated = decision as Extract<typeof decision, { additionalSignals?: unknown }> & { validationStatus: string };
     const authored = plans.flatMap((plan) => (plan.authoredText ? [plan.authoredText] : []));
@@ -341,7 +390,7 @@ export class DefaultTurnController implements TurnController {
         ...(state.activeProcess ? { activeProcess: state.activeProcess } : {}),
         ...(state.activeSpecificFunction ? { activeSpecificFunction: state.activeSpecificFunction } : {}),
       };
-      const binding = this.options.bindings.resolve(validated.route, validated.intent);
+      const binding = bindings.resolve(validated.route, validated.intent);
       const plannedTools = [...new Set(plans.flatMap((plan) => plan.toolIds ?? []))];
       const allowedToolIds = plannedTools.filter(
         (id) => Boolean(binding && binding.executionPolicy.mode !== "deterministic" && binding.executionPolicy.toolIds.includes(id)),

@@ -1,4 +1,4 @@
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -32,6 +32,22 @@ describe("BridgeCrux kit", () => {
     expect(output).not.toContain("must-not-appear");
     if (prior === undefined) delete process.env.GEMINI_API_KEY;
     else process.env.GEMINI_API_KEY = prior;
+    stdout.mockRestore();
+  });
+
+  it("evaluates medium and high routing observations without calling a model", async () => {
+    const root = await mkdtemp(join(tmpdir(), "bridgecrux-routing-eval-"));
+    const cases = join(root, "cases.json");
+    const observations = join(root, "observations.json");
+    await writeFile(cases, JSON.stringify([{ id: "one", message: "do it", expectedRoute: "tasks", expectedIntent: "execute", required: true }]));
+    await writeFile(observations, JSON.stringify([
+      { caseId: "one", thinkingLevel: "medium", run: 1, route: "wrong", intent: "wrong" },
+      { caseId: "one", thinkingLevel: "high", run: 1, route: "tasks", intent: "execute" },
+      { caseId: "one", thinkingLevel: "high", run: 2, route: "tasks", intent: "execute" },
+    ]));
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    expect(await runBridgeCruxCli(["evaluate-routing", "--cases", cases, "--observations", observations, "--json"])).toBe(0);
+    expect(stdout.mock.calls.flat().join("")).toContain('"recommendation": "high"');
     stdout.mockRestore();
   });
 });

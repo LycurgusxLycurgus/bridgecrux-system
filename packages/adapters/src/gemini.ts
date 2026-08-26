@@ -1,4 +1,4 @@
-import { GoogleGenAI, ThinkingLevel } from "@google/genai";
+import { GoogleGenAI, HarmBlockThreshold, HarmCategory, ThinkingLevel } from "@google/genai";
 import type {
   JsonValue,
   ModelThinkingLevel,
@@ -21,7 +21,8 @@ type GeminiClient = {
       contents: string;
       config?: {
         systemInstruction?: string;
-        temperature?: number;
+        maxOutputTokens?: number;
+        safetySettings?: { category: HarmCategory; threshold: HarmBlockThreshold }[];
         responseMimeType?: string;
         responseJsonSchema?: unknown;
         thinkingConfig?: { thinkingLevel?: ThinkingLevel };
@@ -30,7 +31,14 @@ type GeminiClient = {
   };
 };
 
-export const GEMINI_DEFAULT_MODEL = "gemini-3.1-flash-lite";
+export const GEMINI_DEFAULT_MODEL = "gemini-3.5-flash-lite";
+export const GEMINI_MAX_OUTPUT_TOKENS = 65_536;
+export const GEMINI_SAFETY_SETTINGS = Object.freeze([
+  { category: HarmCategory.HARM_CATEGORY_HARASSMENT, threshold: HarmBlockThreshold.OFF },
+  { category: HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold: HarmBlockThreshold.OFF },
+  { category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold: HarmBlockThreshold.OFF },
+  { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.OFF },
+]);
 
 export type GeminiCallAudit = (event: {
   purpose: "router" | "memory" | "assessment" | "tutor" | "tool";
@@ -67,13 +75,14 @@ export class GeminiModelClient implements ModelClient {
 
   async structured<T>(request: StructuredModelRequest<T>): Promise<T> {
     const model = request.model ?? this.#defaultModel;
-    const thinkingLevel = request.thinkingLevel ?? "high";
+    const thinkingLevel = request.thinkingLevel ?? "medium";
     try {
       const response = await this.#client.models.generateContent({
         model,
         contents: `${request.prompt}\n\nINPUT_JSON:\n${safeJson(request.input)}`,
         config: {
-          temperature: request.temperature ?? 0.2,
+          maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
+          safetySettings: [...GEMINI_SAFETY_SETTINGS],
           responseMimeType: "application/json",
           responseJsonSchema: request.schema,
           thinkingConfig: { thinkingLevel: toProviderThinkingLevel(thinkingLevel) },
@@ -92,7 +101,7 @@ export class GeminiModelClient implements ModelClient {
 
   async tutor(request: TutorModelRequest): Promise<string> {
     const model = request.model ?? this.#defaultModel;
-    const thinkingLevel = request.thinkingLevel ?? "high";
+    const thinkingLevel = request.thinkingLevel ?? "medium";
     try {
       const response = await this.#client.models.generateContent({
         model,
@@ -105,7 +114,8 @@ export class GeminiModelClient implements ModelClient {
         }),
         config: {
           systemInstruction: request.systemPrompt,
-          temperature: 0.4,
+          maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
+          safetySettings: [...GEMINI_SAFETY_SETTINGS],
           thinkingConfig: { thinkingLevel: toProviderThinkingLevel(thinkingLevel) },
         },
       });
@@ -141,7 +151,8 @@ export class GeminiModelClient implements ModelClient {
           }),
           config: {
             systemInstruction: `${request.systemPrompt}\nSelect only from allowedTools. Return a call when authoritative data is required; otherwise return the final user-facing response.`,
-            temperature: 0.2,
+            maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
+            safetySettings: [...GEMINI_SAFETY_SETTINGS],
             responseMimeType: "application/json",
             responseJsonSchema: toolLoopSchema([...allowed.keys()]),
             thinkingConfig: { thinkingLevel: toProviderThinkingLevel(thinkingLevel) },
@@ -190,16 +201,19 @@ export type GeminiTaskSignalRouterOptions = {
   model?: string;
   client: ModelClient;
   prompt?: string;
+  thinkingLevel?: ModelThinkingLevel;
 };
 
 export class GeminiTaskSignalRouter implements TaskSignalRouter {
   readonly modelName: string;
   readonly #client: ModelClient;
   readonly #prompt: string;
+  readonly #thinkingLevel: ModelThinkingLevel;
 
   constructor(options: GeminiTaskSignalRouterOptions) {
     this.modelName = options.model ?? GEMINI_DEFAULT_MODEL;
     this.#client = options.client;
+    this.#thinkingLevel = options.thinkingLevel ?? "medium";
     this.#prompt =
       options.prompt ??
       "Classify the user's task signal using only declared routes, intents, state, operations, and policies. Return the schema exactly. Do not execute, authorize, or write user-facing copy.";
@@ -213,8 +227,7 @@ export class GeminiTaskSignalRouter implements TaskSignalRouter {
       input,
       schema: ROUTER_DECISION_SCHEMA,
       correlationId: input.message.correlationId,
-      temperature: 0.2,
-      thinkingLevel: "medium",
+      thinkingLevel: this.#thinkingLevel,
       parse: parseRouterDecision,
     });
   }

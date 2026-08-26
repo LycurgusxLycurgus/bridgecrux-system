@@ -1,4 +1,5 @@
 export * from "./capability-gaps.js";
+export * from "./capabilities.js";
 export * from "./contracts.js";
 export * from "./controllers.js";
 export * from "./copy-gate.js";
@@ -9,5 +10,6 @@ export * from "./operations.js";
 export * from "./references.js";
 export * from "./registry.js";
 export * from "./reports.js";
+export * from "./routing-evaluation.js";
 export * from "./router-validator.js";
 export * from "./testing.js";

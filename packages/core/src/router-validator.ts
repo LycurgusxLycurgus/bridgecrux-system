@@ -203,6 +203,7 @@ export class DefaultRouterDecisionValidator implements RouterDecisionValidator {
     }
 
     return validatedSignal(raw, {
+      capabilityId: intent?.capabilityId ?? "",
       status,
       codes,
       references: referenceResult.references,
@@ -245,6 +246,7 @@ function validatedSignal(
   raw: RawTaskSignalDecision,
   result: {
     status: ValidationStatus;
+    capabilityId: string;
     codes: string[];
     references: ValidatedTaskSignalDecision["resolvedReferences"];
     allowedMutation: boolean;
@@ -255,6 +257,7 @@ function validatedSignal(
   const anticipatedRoute = result.preserveGapMetadata ? normalizeGapMetadata(raw.anticipatedRoute) : undefined;
   const capabilityGap = result.preserveGapMetadata ? normalizeGapMetadata(raw.capabilityGap) : undefined;
   return {
+    capabilityId: result.capabilityId,
     route: raw.route,
     intent: raw.intent,
     confidence: raw.confidence,

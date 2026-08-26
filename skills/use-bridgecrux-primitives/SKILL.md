@@ -1,96 +1,77 @@
 ---
 name: use-bridgecrux-primitives
-description: Integrate, compose, audit, test, or repair BridgeCrux runtime primitives in an agentic application, and coordinate the installed route-anticipation and prompt-authoring skills. Use for any work involving an agentic app's task-signal routing, canonical crux content, handler bindings, deterministic validation or processes, operations, persistence, memory, reports, model or channel adapters, BridgeCrux installation, conformance, or end-to-end crux behavior.
+description: Integrate, compose, audit, test, update, or repair BridgeCrux runtime primitives and coordinate the route-anticipation and prompt-authoring skills. Use for any work involving a crux's capability catalog, cross-surface behavior, routing, execution policies, handlers, operations, persistence, processes, generated controls, model/tool behavior, channels, installation, conformance, or end-to-end agentic-app behavior.
 ---
 
 # Use BridgeCrux Primitives
 
-Treat BridgeCrux as a software harness, not a prompt convention. Preserve this authority chain:
+BridgeCrux is a software harness and versioned repository knowledge, not a prompt convention or built-in model memory. Activate this skill before every nontrivial turn that may affect BridgeCrux-powered behavior. Read the installed version, [runtime-map.md](references/runtime-map.md), affected public contracts, canonical crux content, and relevant child skill. Re-open them whenever evidence exposes a knowledge gap; never fill one from memory.
+
+Preserve this authority chain:
 
 ```text
 inbound transport
 -> normalized message and durable state
--> raw task-signal decision
+-> compact task-signal decision for user-authored text
 -> deterministic validation and reference/evidence gates
--> declared handler binding and operations
--> persistence and audit
--> allowed user-copy source
+-> attached capability and derived handler/operation binding
+-> authorized operations, persistence, and audit
+-> truthful copy gate
 -> outbound transport
 ```
 
-Raw model output never authorizes mutation or becomes durable truth. Persisted application state and declared code contracts remain authoritative.
-
-## Activation And Versioned Knowledge
-
-Treat BridgeCrux as versioned repository knowledge that is absent until this skill and the installed package evidence are read. Activate this skill before every nontrivial turn that may inspect, explain, plan, change, debug, validate, or extend BridgeCrux-powered behavior. This includes apparently local application work whenever routing, process execution, model/tool policy, state, copy, delivery, or audit could be affected. If relevance is uncertain, activate the skill and inspect first.
-
-Never complete a BridgeCrux knowledge gap from model memory. Read the installed BridgeCrux version, this skill, the runtime map, the affected public contracts, and the relevant child skill. Re-open them whenever implementation evidence contradicts the current understanding or a required primitive is unfamiliar. Ordinary work proven unrelated to BridgeCrux may proceed without loading the child skills.
-
-## Inspect Before Editing
-
-Read the target application's package metadata, installed BridgeCrux version, crux content, route registry, bindings, operation registrations, persistence composition, adapters, and affected tests. Check `AGENTS.md` and `CLAUDE.md` for the BridgeCrux managed block. Read [runtime-map.md](references/runtime-map.md) when selecting packages or diagnosing a broken boundary.
-
-Recover configuration and behavior from repo evidence before asking the user. Ask only when a product, safety, authorization, or data-lifecycle choice materially changes the contract and cannot be inferred.
+Raw model output never authorizes mutation or becomes durable truth.
 
 ## Choose The Work Path
 
-Use `$anticipate-crux-routes` before runtime changes when the task surface is new, incomplete, expanded, or disconnected. Its maintained route implementation checklist defines which user goals must reach which handlers and operations.
+- Use `$anticipate-crux-routes` first when capabilities or surfaces are new, changing, incomplete, duplicated, contradictory, or disconnected. It owns semantic parity, compact routes, route-local intents, routing evaluation, and the all-route/all-surface simulation.
+- Use `$write-crux-prompts` when schema-3 configuration, system content, assistant routing content, specific functions, processes, onboarding, style, or product invariants change.
+- Use both in that order for a new crux or product-surface change, then return here for runtime integration and whole-turn validation.
+- For a stable runtime defect with correct capability and content contracts, work directly through this skill.
 
-Use `$write-crux-prompts` when creating or revising `system.prompt.md`, `assistants.md`, specific functions, or deterministic-process content. Supply the verified application surface and route checklist; prompt text must not invent software capability.
+## Inspect Before Editing
 
-Use both child skills when building a crux from scratch or when product changes affect routes and canonical content. Run route anticipation first, prompt authoring second, and runtime integration third.
+Read the target package metadata, BridgeCrux version, schema-3 content, generated capability surface, route/capability registry, operations, persistence composition, adapters, installed-skill state, managed instructions, and affected tests. Recover facts autonomously; ask only when an unresolved product, authorization, safety, or data-lifecycle choice would materially change the contract.
 
-For a stable local runtime defect with an already-correct task surface and canonical package, work directly through this skill and preserve existing route/content contracts.
+## Compose One Agentic Application
 
-## Compose The Runtime
+1. Create one canonical capability catalog. Derive routes, handler bindings, operation allowlists, execution policies, copy/audit sources, and surface mappings from it. Never maintain separate “agent features” and “app features.”
+2. Give every public capability semantic parity through conversation, generated headless entrypoints, and every declared UI/channel surface. Presentation may differ; handler, operation authority, durable state, and result semantics may not.
+3. Keep routes coarse and intents route-local. Send only compact route/intent discriminators to the router—not lifecycle, persistence, or UI implementation detail.
+4. Load bounded durable state before routing. Every user-authored textual turn uses the predeclared freeform router, medium by default. High routing requires a passed medium-vs-high comparison evaluation.
+5. Validate raw decisions in code: route/intent, attached capability, speech act, time, references, required state/fields, mutation evidence, safety, composite compatibility, and handler binding.
+6. Enforce the capability or active process execution policy; router/model output cannot downgrade or expand it:
+   - `deterministic`: code only after routing. An active step bypasses routing only for a server-issued, replay-safe closed choice scoped to user/session/process/step. It makes zero router, tutor, assessment, and tool-model calls. Typed text routes normally.
+   - `hybrid`: high-thinking interpretation or generated procedural UX with only declared tools. Schema/domain validation alone authorizes progression and persistence.
+   - `agentic`: medium for knowledge-only conversation; high for complex work or any tool use. Tools are limited to the validated capability.
+7. Accept generated controls only as validated `InteractionPlan`s with a declared hybrid capability, two to four bounded channel-safe options, expiry, and free-text continuation. Selection supplies evidence but never mutation authority.
+8. Return operation plans from handlers. The executor enforces allowlists, permissions, preconditions, preservation, idempotency, persistence, and ledger/audit events.
+9. Persist raw and validated decisions, operation results, messages, reports, interactions, preferences, and deferred work at their declared boundaries. Serialize each crux/channel/user/thread turn with an expiring correlation-owned lease.
+10. Generate visible text only from an allowed source and gate success claims against actual required-operation outcomes. Apply persisted `casual` or `pragmatic` style without changing truth, authority, safety, or outcome.
+11. Keep provider/channel behavior in adapters. New Google integrations use exact `gemini-3.5-flash-lite`, explicit medium/high thinking, 65,536 maximum output tokens, BridgeCrux safety settings, and no temperature/top-p/top-k. Telegram uses safe HTML, a shared callback codec, early acknowledgement, and refreshed best-effort typing activity.
+12. Enforce onboarding parity, channel affordances, saved-artifact lifecycle, destructive confirmation, provenance/completeness/order/default/auth/hosting invariants, and explicit unsupported-execution reporting.
 
-1. Install only the BridgeCrux packages needed by the target. Prefer `@bridge-crux/kit` for the supported full surface and individual packages for intentionally narrow consumers.
-2. Build and validate canonical content with the installed CLI. Treat generated manifests as derived artifacts; edit source Markdown, not generated output.
-3. Register every route and intent, handler binding, and operation explicitly. Audit the registry in both directions so user-invokable operations are reachable and internal-only operations remain unavailable.
-4. Load bounded durable state before routing. Keep domain state in application-owned tables and expose it through a thin state loader.
-5. Validate raw decisions in code: declared route and intent, speech act, temporal stance, references, required state and fields, mutation evidence, safety, capability-gap eligibility, and composite compatibility.
-6. Dispatch only validated decisions. Filter operations to the validated binding, enforce preconditions and preservation rules, and use durable idempotency for externally retryable mutations.
-7. Persist raw and validated decisions, operation outcomes, ledger events, messages, reports, and deferred work at their declared boundaries.
-8. Declare an execution policy for every route and every established process step before users enter it. The runtime, never router output, selects the effective policy:
-   - `deterministic`: code-only after selection. A freeform medium-thinking router may select a predeclared deterministic handler, after which no assessment, tutor, or tool model runs. An already-active deterministic process bypasses routing and makes zero model calls only for server-issued, replay-safe closed choices; typed natural language that resembles a choice is not a trusted selection.
-   - `hybrid`: a predeclared medium- or high-thinking assessment interprets structured or open input, then schema and domain validators exclusively authorize progression. Expose only predeclared tools, and require the declared completion operation before success copy.
-   - `model`: medium thinking for knowledge interaction and high thinking for agentic interaction. The model may answer or use only tools from the validated route binding; every backend operation still passes deterministic authorization, preconditions, idempotency, persistence, and audit.
-9. Route freeform conversation with medium thinking. The validated route may enter a deterministic step, a medium/high hybrid process, or a medium/high model route. Established process difficulty, thinking, completion mode, context, and allowed tools are fixed in its contract before entry and cannot be downgraded or expanded by model output.
-10. Serialize each crux/channel/user/thread turn with an expiring correlation-owned lease. On contention, return a retryable busy result without starting a second model or operation path. Release only the owning correlation in a `finally` boundary.
-10. Give hybrid assessment the active step schema, bounded transcript, process state, and explicitly scoped durable context. Require normalized fields, missing fields, proposed corrections, confidence, and typed reasons. Let domain validators downgrade `ready` to partial, clarification, or rejection; assessment confidence never authorizes persistence.
-11. Generate visible text only from an allowed copy source and pass it through the copy gate. Authored deterministic copy makes no model call. Medium/high model copy receives actual operation results. Success claims require every declared completion operation to have succeeded or resolved idempotently.
-12. Default new Gemini integrations to `gemini-3.1-flash-lite`. Keep model and Telegram behavior inside adapters. Use Telegram-safe HTML, acknowledge structured callbacks, and maintain best-effort typing activity while a noticeable turn is running. Activity failure never changes domain outcome.
-13. Validate one complete real turn from inbound normalization through persisted outcome, truthful copy, structured controls when applicable, delivery result, and audit evidence.
+## Preserve Boundaries
 
-## Preserve Application Boundaries
+- Keep `@bridge-crux/core` provider-neutral and application-domain-free.
+- Compose `@bridge-crux/convex` tables with app-owned state; put domain behavior behind declared operations near its feature.
+- Edit canonical source under `cruxes/<id>/`, not generated artifacts.
+- Keep conversation history, personalization memory, domain evidence, operational audit, and model transcripts distinct.
+- Preserve explicit references over active-item fallback, and omitted state/history during mutations.
+- Leave unavailable providers, channels, capabilities, and automatic repairs unavailable until their full contract and tests exist.
 
-- Keep `@bridge-crux/core` provider-neutral and free of application domain behavior.
-- Compose `@bridge-crux/convex` tables with app-owned tables; do not copy framework persistence internals into domain code.
-- Put domain reads and mutations behind declared operation handlers near the feature they control.
-- Keep canonical source under `cruxes/<crux-id>/`; do not create alternate prompt trees.
-- Keep conversation history, compact personalization memory, domain evidence, and operational audit distinct.
-- Preserve explicit target references over active-item fallback.
-- Preserve omitted state and historical evidence during mutations.
-- Leave unsupported providers and channels unavailable until their full contract and integration tests exist.
+## Diagnose And Validate
 
-## Diagnose By Boundary
-
-Classify failures at the first broken boundary: content, router, validator, reference, evidence, binding, handler, operation, persistence, model, copy, channel, memory, or report. Change the smallest authoritative layer. A missing handler binding is not a capability gap; a model wording error is not permission to weaken deterministic validation.
-
-When a runtime failure can recur, add a regression that proves the complete affected path and update the route checklist status. Keep reports redacted and repairs review-only unless the application has separately authorized and tested automatic application.
-
-## Completion Gate
+Classify the first broken boundary: capability/surface, content, router, validator, reference/evidence, binding, handler, operation, persistence, model, copy, channel, interaction, preference, memory, or report. Repair the narrowest authority and add the failure to the maintained simulation.
 
 Finish only when:
 
-- canonical content builds without unknown routes, operations, references, or empty records;
-- every supported task signal reaches deterministic validation, a binding, executable operations, persistence, copy, delivery, and audit;
-- commands and aliases share the same guards as natural-language routes;
-- mutations require positive evidence, resolved references, satisfied preconditions, and durable idempotency where retries are possible;
-- read-only, clarification, contradiction, and capability-gap turns cannot mutate state;
-- provider errors become structured runtime failures with safe fallback behavior;
-- deterministic observations prove zero router, tutor, assessment, and tool model calls;
-- hybrid/model tools are a subset of the predeclared process or validated route binding;
-- closed choices are server-issued, user/session/step scoped, single-use, and replay safe;
-- focused tests and one whole-turn conformance path pass;
-- the consumer can continue the work from explicit local contracts without rediscovering the architecture.
+- schema-3 content builds and its generated capability/headless artifacts are current;
+- every public capability has semantically equivalent conversation, headless, and declared-surface paths;
+- every route/intent attaches one capability and executable handler binding;
+- deterministic choices prove zero model calls and replay-safe scope; typed text proves router use;
+- hybrid/agentic thinking and tools exactly match their fixed policies;
+- operations, persistence, truthful copy, delivery, activity, and audit are proven together;
+- duplicate/contradiction and medium-vs-high routing evaluations pass;
+- one real-persistence all-route/all-surface regression passes;
+- install/update/doctor behavior and the relevant consumer migration are documented.

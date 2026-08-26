@@ -189,9 +189,11 @@ describe("ConvexBridgeCruxRepository", () => {
       const control = await repository.issueInteraction({
         control: {
           id: "choose",
+          kind: "deterministic_process",
           field: "answer",
           prompt: "Choose",
           options: [{ id: "yes", label: "Yes", value: true }, { id: "no", label: "No", value: false }],
+          allowFreeText: false,
         },
         userId: persisted.userId,
         sessionId: persisted.sessionId,

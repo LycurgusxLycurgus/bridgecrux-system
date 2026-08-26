@@ -10,12 +10,15 @@ import type {
   SpecificFunctionController,
   ToolOperationBinding,
 } from "./contracts.js";
+import { CapabilityRegistry } from "./capabilities.js";
 
 export class RouteIntentRegistry {
   readonly definition: RouteRegistryDefinition;
+  readonly capabilities: CapabilityRegistry;
   readonly #routes = new Map<string, RouteContract>();
 
   constructor(definition: RouteRegistryDefinition) {
+    this.capabilities = new CapabilityRegistry(definition);
     for (const route of definition.routes) {
       if (!route.id.trim() || this.#routes.has(route.id)) {
         throw new Error(`Duplicate or empty route id: ${route.id}`);
@@ -54,6 +57,10 @@ export class HandlerBindingRegistry {
 
   constructor(bindings: HandlerBinding[] = []) {
     for (const binding of bindings) this.register(binding);
+  }
+
+  static fromDefinition(definition: RouteRegistryDefinition): HandlerBindingRegistry {
+    return new HandlerBindingRegistry(new CapabilityRegistry(definition).bindings());
   }
 
   register(binding: HandlerBinding): void {
@@ -164,6 +171,9 @@ export function auditHandlerBindings(
       if (!binding) {
         issues.push(issue("handler_binding", `Missing binding for ${route.id}/${intent.id}`, route.id, intent.id));
         continue;
+      }
+      if (binding.capabilityId !== intent.capabilityId) {
+        issues.push(issue("capability_parity", `Binding ${route.id}/${intent.id} names ${binding.capabilityId} but the intent names ${intent.capabilityId}`, route.id, intent.id));
       }
       for (const operationId of binding.operationIds) {
         represented.add(operationId);

@@ -36,10 +36,13 @@ describe("canonical content builder", () => {
     const repeated = await readFile(join(output, "manifest.generated.json"), "utf8");
     expect(first.manifest.specificFunctions).toHaveLength(1);
     expect(first.manifest.processes).toHaveLength(1);
-    expect(first.manifest.schemaVersion).toBe(2);
-    expect(first.manifest.routeChecklist).toHaveLength(3);
-    expect(first.manifest.handlerStubs).toHaveLength(3);
-    expect(first.manifest.regressionScenarios).toHaveLength(5);
+    expect(first.manifest.schemaVersion).toBe(3);
+    expect(first.manifest.capabilityManifest).toHaveLength(4);
+    expect(first.manifest.routeChecklist).toHaveLength(4);
+    expect(first.manifest.handlerStubs).toHaveLength(4);
+    expect(first.manifest.surfaceMatrix).toHaveLength(12);
+    expect(first.manifest.surfaceMatrix[0]).toMatchObject({ access: expect.any(String), states: { loading: expect.any(String), success: expect.any(String), error: expect.any(String) } });
+    expect(first.manifest.regressionScenarios).toHaveLength(18);
     expect(first.manifest.processes[0]?.steps[0]).toMatchObject({
       id: "collect",
       input: { mode: "closed_choice", control: { field: "answer" } },
@@ -47,6 +50,7 @@ describe("canonical content builder", () => {
     });
     expect(second.manifest).toEqual(first.manifest);
     expect(repeated).toBe(initial);
+    expect(await readFile(join(output, "capability-surface.generated.md"), "utf8")).toContain("records.complete");
   });
 
   it("fails with actionable diagnostics for missing operations", async () => {
@@ -82,21 +86,32 @@ describe("canonical content builder", () => {
     expect(result.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: "content_id_duplicate" })]));
   });
 
-  it("rejects removed 0.1.1 config contracts with migration diagnostics", async () => {
+  it("rejects removed schema-2 and model sampling contracts with migration diagnostics", async () => {
     const parsed = await parseCruxContent(await discoverCruxContent(fixture));
     parsed.config = {
       ...parsed.config!,
-      schemaVersion: 1,
+      schemaVersion: 2,
       models: {
         ...parsed.config!.models,
-        router: { ...parsed.config!.models.router, thinking: "low" },
+        router: { ...parsed.config!.models.router, temperature: 0.2 },
       },
     } as never;
     const result = validateCruxContent(parsed, { operationIds: operations });
     expect(result.ok).toBe(false);
     expect(result.diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: "schema_version_removed" }),
-      expect.objectContaining({ code: "model_thinking_removed" }),
+      expect.objectContaining({ code: "model_sampling_removed" }),
     ]));
+  });
+
+  it("rejects surface affordances without access and observable states", async () => {
+    const parsed = await parseCruxContent(await discoverCruxContent(fixture));
+    parsed.config!.capabilities[0]!.surfaces[0] = {
+      ...parsed.config!.capabilities[0]!.surfaces[0]!,
+      access: undefined,
+      states: { loading: "", success: "", error: "" },
+    } as never;
+    const result = validateCruxContent(parsed, { operationIds: operations });
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({ code: "surface_state_contract_missing" }));
   });
 });

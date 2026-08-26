@@ -3,15 +3,19 @@ import { describe, expect, it, vi } from "vitest";
 import {
   BridgeCruxAdapterError,
   GEMINI_DEFAULT_MODEL,
+  GEMINI_MAX_OUTPUT_TOKENS,
+  GEMINI_SAFETY_SETTINGS,
   GeminiModelClient,
   GeminiTaskSignalRouter,
   TelegramChannelAdapter,
   formatTelegramHtml,
+  decodeTelegramChoiceCallback,
+  encodeTelegramChoiceCallback,
   splitTelegramText,
 } from "../src/index.js";
 
 describe("GeminiModelClient", () => {
-  it("uses JSON schema, high thinking, and default router temperature for agentic work", async () => {
+  it("uses JSON schema, explicit high thinking, maximum output, and OFF safety settings without sampling controls", async () => {
     const generated = vi.fn().mockResolvedValue({ text: '{"value":"ok"}' });
     const audit = vi.fn();
     const client = new GeminiModelClient({ client: { models: { generateContent: generated } }, audit });
@@ -22,6 +26,7 @@ describe("GeminiModelClient", () => {
       input: { message: "hello" },
       schema: { type: "object" },
       correlationId: "corr",
+      thinkingLevel: "high",
       parse: (value) => value as { value: string },
     });
 
@@ -29,13 +34,21 @@ describe("GeminiModelClient", () => {
     expect(generated).toHaveBeenCalledWith(
       expect.objectContaining({
         model: "gemini-test",
-        config: expect.objectContaining({ temperature: 0.2, responseMimeType: "application/json", thinkingConfig: { thinkingLevel: "HIGH" } }),
+        config: expect.objectContaining({
+          maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
+          safetySettings: GEMINI_SAFETY_SETTINGS,
+          responseMimeType: "application/json",
+          thinkingConfig: { thinkingLevel: "HIGH" },
+        }),
       }),
     );
+    expect(generated.mock.calls[0]?.[0].config).not.toHaveProperty("temperature");
+    expect(generated.mock.calls[0]?.[0].config.safetySettings).toHaveLength(4);
+    expect(generated.mock.calls[0]?.[0].config.safetySettings.every((setting: { threshold: string }) => setting.threshold === "OFF")).toBe(true);
     expect(audit).toHaveBeenCalledWith(expect.objectContaining({ purpose: "router", status: "succeeded", correlationId: "corr" }));
   });
 
-  it("defaults new integrations to Gemini 3.1 Flash-Lite and supports medium knowledge-only chat", async () => {
+  it("defaults new integrations and unspecified structured work to Gemini 3.5 Flash-Lite with medium thinking", async () => {
     const generated = vi
       .fn()
       .mockResolvedValueOnce({ text: '{"value":"ok"}' })
@@ -56,7 +69,7 @@ describe("GeminiModelClient", () => {
 
     expect(generated.mock.calls[0]?.[0]).toMatchObject({
       model: GEMINI_DEFAULT_MODEL,
-      config: { thinkingConfig: { thinkingLevel: "HIGH" } },
+      config: expect.objectContaining({ thinkingConfig: { thinkingLevel: "MEDIUM" }, maxOutputTokens: 65_536 }),
     });
     expect(generated.mock.calls[1]?.[0]).toMatchObject({
       model: GEMINI_DEFAULT_MODEL,
@@ -161,7 +174,7 @@ describe("GeminiModelClient", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it("supports predeclared tools at medium thinking", async () => {
+  it("keeps tool loops high-thinking by default", async () => {
     const execute = vi.fn().mockResolvedValue({ status: "active" });
     const generated = vi
       .fn()
@@ -170,13 +183,12 @@ describe("GeminiModelClient", () => {
     const client = new GeminiModelClient({ client: { models: { generateContent: generated } } });
     const result = await client.toolLoop!({
       ...tutorRequest(),
-      thinkingLevel: "medium",
       tools: [{ id: "records.read", description: "Read one record", inputSchema: { type: "object" } }],
       execute,
     });
     expect(result.text).toBe("Active.");
     expect(execute).toHaveBeenCalledOnce();
-    expect(generated.mock.calls[0]?.[0]).toMatchObject({ config: { thinkingConfig: { thinkingLevel: "MEDIUM" } } });
+    expect(generated.mock.calls[0]?.[0]).toMatchObject({ config: expect.objectContaining({ thinkingConfig: { thinkingLevel: "HIGH" } }) });
   });
 });
 
@@ -259,9 +271,11 @@ describe("TelegramChannelAdapter", () => {
       threadId: "42:3",
       controls: [{
         id: "interaction-2",
+        kind: "deterministic_process",
         field: "answer",
         prompt: "Choose",
         options: [{ id: "yes", label: "Yes", value: true }, { id: "no", label: "No", value: false }],
+        allowFreeText: false,
       }],
     }));
     await adapter.send(payload!);
@@ -282,6 +296,7 @@ describe("TelegramChannelAdapter", () => {
         ]],
       },
     });
+    expect(decodeTelegramChoiceCallback(encodeTelegramChoiceCallback("interaction-2", "yes"))).toEqual({ interactionId: "interaction-2", optionId: "yes" });
   });
 
   it("retries transient responses and returns the persisted provider message id", async () => {
@@ -339,7 +354,7 @@ function routerInput(): RouterInput {
       idempotencyKey: "once",
       correlationId: "corr",
     },
-    registry: { routes: [] },
+    catalog: { routes: [] },
     state: {
       user: { id: "u", externalId: "u", channel: "test" },
       session: { id: "s", cruxId: "c", status: "active", inboundTurnCount: 1, conversationWindow: 5 },
@@ -362,6 +377,7 @@ function tutorRequest(): TutorModelRequest {
     userMessage: "Why?",
     recentMessages: [],
     decision: {
+      capabilityId: "conversation.explain",
       route: "conversation",
       intent: "explain",
       confidence: 1,

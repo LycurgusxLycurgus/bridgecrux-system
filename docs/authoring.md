@@ -1,75 +1,89 @@
 # Authoring A Crux
 
-Use `$use-bridgecrux-primitives` as the coordinator for all work in this guide.
+Use `$use-bridgecrux-primitives` as the coordinator. BridgeCrux knowledge is versioned: read the installed skills and contracts instead of relying on model memory.
 
-## Define The Executable Surface
+## 1. Define One Capability Surface
 
-Run `$anticipate-crux-routes` when creating a crux, exposing a new feature, or auditing an incomplete agent path. Its route implementation checklist must reconcile both directions:
+Run `$anticipate-crux-routes`. Begin with user outcomes, then reconcile product UI, conversation, channels, backend operations, processes, jobs, durable artifacts, and a generated headless surface.
 
 ```text
-user goal -> route -> validation -> handler -> operation -> persistence -> copy -> audit
-operation, command, or job -> deliberate task surface or internal-only status
+user outcome
+-> one capability
+-> one route-local intent
+-> one handler + authorized operations
+-> one durable semantic result
+-> conversation + headless + every declared surface
 ```
 
-Do not declare a capability merely because a model can describe it. A supported task signal must reach a real operation or a deliberate read-only/conversational controller.
+Routes are coarse domains; intents are sub-routes. Collapse semantic duplicates and overlapping aliases. A UI control, command, or backend operation that is not represented must be deliberately internal, intentionally unavailable, or a typed gap.
 
-## Write Canonical Content
+Maintain one checklist and one real-persistence all-route/all-surface simulation. A route label or mocked success is not proof of capability parity.
 
-Run `$write-crux-prompts` after the application surface and backend operations are known. It owns exactly:
+## 2. Write Schema-3 Canonical Content
 
-- `system.prompt.md` for identity, scope, harness awareness, interaction, safety, and user-copy behavior;
-- `assistants.md` for the Task-Signal Smart Router, registries, decision validation, dispatch, audit, and correction;
-- `specific-functions/*.md` for domain truth, operations, evidence, references, preservation, recovery, and regression contracts;
-- `specific-functions/processes.md` only when established deterministic or hybrid processes exist.
+Run `$write-crux-prompts`. It authors:
 
-Use the application’s domain vocabulary inside its crux. Keep universal BridgeCrux packages and neutral fixtures free of consumer-specific terms.
+- `crux.config.json`: compact routes, capabilities, surfaces, fixed execution, models, communication, onboarding, channel affordances, invariants, memory, gaps, and feedback;
+- `system.prompt.md`: product identity, scope, durable truth, boundaries, style, copy, and capability-gap behavior;
+- `assistants.md`: compact hierarchical router and raw-decision contract;
+- `specific-functions/*.md`: verified domain handlers, state, operations, evidence, references, errors, audit, and copy;
+- process files: established deterministic or hybrid step contracts.
 
-## Register Runtime Contracts
+Prompt text cannot create missing software. Keep facts in one authoritative file and reference them rather than duplicating them.
 
-For each supported route/intent pair:
+## 3. Register Runtime Contracts
 
-1. Add an `IntentContract` to the route registry.
-2. Add one `HandlerBinding` naming required state, allowed mutation classes,
-   operation ids, copy sources, audit events, and exactly one execution policy.
-3. Register the matching `SpecificFunctionController` or `ProcessController`.
-4. Register every operation handler. Keep reads and mutations adjacent to the application feature they control.
-5. Supply reference candidates, evidence policies, available state, and composite compatibility to deterministic validation.
-6. Persist raw and validated decisions separately.
+Construct one `RouteRegistryDefinition` containing surfaces, routes with route-local intents, and capabilities. Derive bindings with `HandlerBindingRegistry.fromDefinition`; do not hand-maintain a second feature registry.
 
-Explicit persisted references take precedence over active-item fallback. Questions, proposals, future intention, contradiction, missing fields, unresolved targets, and safety flags must not mutate state.
+For each capability:
 
-## Content Frontmatter
+1. register its controller;
+2. register every authorized operation/tool adapter;
+3. expose application state through the bounded state loader;
+4. provide reference candidates, evidence policies, mutation classes, and composite rules;
+5. map conversation, headless, and all configured UI/channel entrypoints to the same semantics;
+6. declare lifecycle and destructive-action behavior where needed.
 
-Canonical Markdown uses YAML frontmatter. The builder accepts repeated
-frontmatter blocks in `specific-functions/processes.md` so several processes
-can share that canonical file. Stable ids, versions, declared routes, intents,
-tools, state reads, state writes, execution policies, completion modes, and
-transitions are validated against `crux.config.json` and the operation manifest.
+## 4. Fix Execution Before Entry
 
-## Choose An Execution Contract
+| Mode | Use | Thinking/tools |
+| --- | --- | --- |
+| deterministic | Code path or active closed authored choice | zero model calls after entry; no tools |
+| hybrid | Open/composite interpretation or dynamic procedural choices | high; declared tools only |
+| agentic | Free explanation/planning/execution | medium for knowledge-only; high for complex or any tools |
 
-| Mode | Valid use | Model | Tools and effects |
-| --- | --- | --- | --- |
-| deterministic | Code-only route after freeform routing, or trusted closed choices in an active process | Active structured turn: zero model calls | No model tools; code may execute declared backend operations |
-| hybrid | Established process needs interpretation, normalization, correction, or open input | Medium or high, fixed before entry by task difficulty | Only process-scoped tools; model proposes/calls, code validates and persists |
-| model | Free interaction, knowledge work, or agentic work that is not an established step sequence | Medium for knowledge/simple work; high for agentic work | Only route-scoped tools; code authorizes every effect |
+Every user-authored text turn routes at medium by default. An active deterministic choice may bypass routing only after durable user/session/process/step/expiry/option/replay validation. Typed text routes normally.
 
-Freeform conversation always starts with the medium-thinking router. That router
-selects a route; it does not write user copy, execute tools, authorize mutation,
-or choose a thinking level. Deterministic active-process turns may bypass the
-router only when the inbound value is a server-issued, replay-safe closed choice.
-Natural-language text is open input and therefore cannot masquerade as a
-deterministic selection.
+Generated procedural UX is a validated hybrid `InteractionPlan`: two to four contextual options, channel-safe IDs, free-text continuation, bounded expiry, and no mutation authority. Code validates and issues it; selection is evidence for the normal capability path.
 
-Every process step declares its canonical input schema, execution policy,
-completion authority (`controller` or `model_tool`), next step, confirmation
-policy, and missing-field questions. An assessment returns normalized fields,
-missing fields, proposed corrections, confidence, and typed reasons but never
-authorizes persistence. Application validators may downgrade `ready` to
-`partial`; they may not expand tools or lower the declared reasoning level.
+Use `bridgecrux evaluate-routing` on a representative corpus before selecting high router thinking.
 
-Use the neutral fixture under `conformance/fixtures/valid-crux/` as a schema exercise, not as a product template.
+## 5. Protect State And Copy
 
-## Completion
+Models never authorize effects. Operations enforce references, ownership, permissions, preconditions, preservation, idempotency, persistence, and audit. Success copy must cite actual required-operation outcomes.
 
-A crux path is verified only when one test or production trace proves normalized inbound input, bounded durable state, raw routing, deterministic validation, binding, operation, persistence, truthful copy, delivery result, and audit evidence together. Update the route implementation checklist with that evidence.
+Saved artifacts declare create → persist → acknowledge → rediscover → reopen → archive/delete. Destructive behavior adds server-issued confirmation, ownership, expiry, single use, post-outcome state, and cross-surface regression.
+
+Persist the `casual` or `pragmatic` communication preference when user-selectable. Style changes wording only; facts, authority, safety, and outcomes remain identical.
+
+## 6. Build And Prove
+
+```bash
+npx bridgecrux validate --root cruxes/<crux-id> --operations operations.json
+npx bridgecrux build --root cruxes/<crux-id> --operations operations.json --out generated/<crux-id>
+npx bridgecrux evaluate-routing --cases routing-cases.json --observations routing-observations.json
+npx bridgecrux doctor --project .
+```
+
+Then run one acceptance block covering:
+
+- every capability, route, intent, handler, operation, and surface;
+- representative, ambiguous, correction, reference, unsupported, and conversation turns;
+- deterministic callback zero-model behavior and typed-text routing;
+- exact hybrid/agentic thinking and tools;
+- generated control encode/decode/acknowledge/consume behavior;
+- real in-memory persistence, idempotency, copy, activity, delivery, and audit;
+- onboarding parity, communication style, lifecycle, destructive actions, and product invariants;
+- duplicate and contradiction audit with zero unexplained findings.
+
+If the block fails, repair the first broken authority and rerun the same complete block.

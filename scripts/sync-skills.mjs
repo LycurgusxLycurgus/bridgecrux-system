@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const source = join(root, "skills");
 const destination = join(root, "packages", "skills", "bundled-skills");
+const packageManifest = JSON.parse(await readFile(join(root, "packages", "skills", "package.json"), "utf8"));
 const skillNames = ["anticipate-crux-routes", "use-bridgecrux-primitives", "write-crux-prompts"];
 
 await rm(destination, { recursive: true, force: true });
@@ -37,6 +38,6 @@ async function collect(directory) {
 
 await writeFile(
   join(destination, "manifest.json"),
-  `${JSON.stringify({ version: 1, skills: skillNames, files }, null, 2)}\n`,
+  `${JSON.stringify({ version: 2, packageVersion: packageManifest.version, skills: skillNames, files }, null, 2)}\n`,
   "utf8",
 );

@@ -3,6 +3,68 @@
 BridgeCrux publishes all public packages and bundled skills at one synchronized
 version. Upgrade the runtime packages and installed skills together.
 
+## 0.3.0 - 2026-08-26
+
+### Breaking Changes
+
+- Removed schema 2, separate route/intent execution maps, and execution mode
+  `model`. Canonical content requires `schemaVersion: 3`, nested compact routes,
+  route-local intents, and a canonical capability catalog. Runtime policy uses
+  `agentic`; no compatibility parser or alias is retained.
+- Hybrid execution is always high-thinking. Agentic execution is medium only
+  for knowledge-only work and high for complex or any tool-using work.
+- Google profiles use exact `gemini-3.5-flash-lite`. Model profiles reject
+  thinking and legacy `temperature`, `topP`, and `topK` sampling fields.
+- Handler bindings are derived from the capability catalog. `RouterInput`
+  accepts a compact routing catalog rather than the full registry.
+
+### Added
+
+- One capability contract for user outcome, route-local intent, handler,
+  operations, execution, copy/audit authority, interactions, lifecycle, and
+  conversation/headless/declared-surface parity. Every surface declares access
+  plus loading, success, error, and optional empty behavior.
+- Static detection for duplicate route summaries, intent discriminators,
+  aliases, capability paths, and outcome descriptions, plus enhanced
+  all-route/all-surface simulation evidence.
+- `InteractionPlan` validation for high-thinking hybrid 2–4 option procedural
+  UX with channel-safe IDs, free-text continuation, expiry, and no implicit
+  mutation authority.
+- `bridgecrux evaluate-routing` for deterministic medium-vs-high comparison
+  evidence and `bridgecrux doctor` checks for schema 3, managed instructions,
+  and project-local skill state.
+- Generated `capability-surface.generated.md` headless output, onboarding and
+  channel-affordance contracts, communication-style preference persistence,
+  artifact/destructive lifecycle contracts, and typed product invariants.
+- Transactional skill `install`, `update`, `uninstall`, and `doctor` with
+  integrity hashes, managed ownership state, collision protection, staging,
+  rollback, dry-run, explicit force, and project-local default targeting.
+
+### Changed And Fixed
+
+- Every user-authored textual turn uses medium freeform routing unless a passed
+  comparison evaluation proves high necessary. Only a trusted active
+  deterministic choice bypasses routing; typed text still routes.
+- Gemini requests now use 65,536 maximum output tokens, explicit medium/high
+  thinking, the BridgeCrux safety configuration, and no legacy sampling fields.
+- Telegram validates outbound controls through the same codec used inbound,
+  acknowledges callbacks early, renders safe HTML, and refreshes typing during
+  noticeable work.
+- Canonical skills now teach one agentic application across all presentations,
+  compact route design, semantic parity, generated interactions, product
+  invariants, and real-persistence conformance. The prompt skill uses focused
+  progressive-disclosure references instead of one oversized instruction file.
+
+### Upgrade Notes
+
+- Follow [Migrate 0.2.x To 0.3.0](docs/installation.md#migrate-02x-to-030).
+  Runtime and skills must use the same exact version.
+- Existing 0.2 project-local skills have no managed ownership state. Preview
+  with `install --dry-run`, preserve local changes, then explicitly adopt once
+  with `install --force`; later upgrades use `update`.
+- Rollback requires restoring schema-2 application source and lockfiles from
+  version control as well as reinstalling the exact 0.2 packages and skills.
+
 ## 0.2.0 - 2026-07-21
 
 ### Breaking Changes

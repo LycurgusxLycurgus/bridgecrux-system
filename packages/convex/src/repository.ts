@@ -84,6 +84,10 @@ export class ConvexBridgeCruxRepository {
       .withIndex("by_user_crux", (query) => query.eq("userId", user._id).eq("cruxId", input.cruxId))
       .unique();
     if (!session) throw new Error("Runtime session was not persisted before state loading");
+    const preference = await this.db
+      .query("bridgecruxPreferences")
+      .withIndex("by_user_crux", (query) => query.eq("userId", user._id).eq("cruxId", input.cruxId))
+      .unique();
 
     const messages = (
       await this.db.query("bridgecruxMessages").withIndex("by_session_created", (query) => query.eq("sessionId", session._id)).order("desc").take(input.conversationWindow)
@@ -127,6 +131,7 @@ export class ConvexBridgeCruxRepository {
         ...(user.locale ? { locale: user.locale } : {}),
         ...(user.timezone ? { timezone: user.timezone } : {}),
         ...(user.displayName ? { displayName: user.displayName } : {}),
+        ...(preference?.communicationStyle ? { communicationStyle: preference.communicationStyle } : {}),
       },
       session: {
         id: session._id,
@@ -463,14 +468,25 @@ export class ConvexBridgeCruxRepository {
   }
 
   async issueInteraction(input: Parameters<StructuredInteractionStore["issue"]>[0]): Promise<ChoiceControl> {
+    if (input.control.kind === "deterministic_process" && (!input.processRunId || !(input.control.stepId ?? input.stepId))) {
+      throw new Error("Deterministic process controls require process and step scope");
+    }
+    if (input.control.kind === "generated_clarification" && (!input.control.capabilityId || !input.control.route || !input.control.intent)) {
+      throw new Error("Generated clarification controls require capability, route, and intent scope");
+    }
     const id = await this.db.insert("bridgecruxInteractions", {
       userId: input.userId as UserId,
       sessionId: input.sessionId as SessionId,
-      processRunId: input.processRunId as ProcessRunId,
-      stepId: input.control.stepId ?? input.stepId,
+      controlKind: input.control.kind,
+      ...(input.processRunId ? { processRunId: input.processRunId as ProcessRunId } : {}),
+      ...(input.control.stepId ?? input.stepId ? { stepId: input.control.stepId ?? input.stepId } : {}),
+      ...(input.control.capabilityId ? { capabilityId: input.control.capabilityId } : {}),
+      ...(input.control.route ? { route: input.control.route } : {}),
+      ...(input.control.intent ? { intent: input.control.intent } : {}),
       field: input.control.field,
       prompt: input.control.prompt,
       optionsJson: JSON.stringify(input.control.options),
+      allowFreeText: input.control.allowFreeText,
       status: "issued",
       correlationId: input.correlationId,
       ...(input.control.expiresAt !== undefined ? { expiresAt: input.control.expiresAt } : {}),
@@ -491,11 +507,37 @@ export class ConvexBridgeCruxRepository {
     await this.db.patch(document._id, { status: "consumed", consumedAt: this.now() });
     return {
       ...input.interaction,
-      processRunId: document.processRunId,
-      stepId: document.stepId,
+      controlKind: document.controlKind,
+      ...(document.processRunId ? { processRunId: document.processRunId } : {}),
+      ...(document.stepId ? { stepId: document.stepId } : {}),
+      ...(document.capabilityId ? { capabilityId: document.capabilityId } : {}),
+      ...(document.route ? { route: document.route } : {}),
+      ...(document.intent ? { intent: document.intent } : {}),
       field: document.field,
       value: option.value,
     };
+  }
+
+  async setCommunicationStyle(input: {
+    userId: string;
+    cruxId: string;
+    style: "casual" | "pragmatic";
+    contractVersion: string;
+    source: "developer_default" | "user_selected" | "migration";
+  }): Promise<void> {
+    const userId = input.userId as UserId;
+    const existing = await this.db
+      .query("bridgecruxPreferences")
+      .withIndex("by_user_crux", (query) => query.eq("userId", userId).eq("cruxId", input.cruxId))
+      .unique();
+    const value = {
+      communicationStyle: input.style,
+      contractVersion: input.contractVersion,
+      source: input.source,
+      updatedAt: this.now(),
+    };
+    if (existing) await this.db.patch(existing._id, value);
+    else await this.db.insert("bridgecruxPreferences", { userId, cruxId: input.cruxId, ...value });
   }
 
   async acquireTurnLease(input: Parameters<TurnLeaseStore["acquire"]>[0]): Promise<boolean> {

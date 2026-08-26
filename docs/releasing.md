@@ -7,7 +7,7 @@ release unless the user explicitly assigns them the release-operator role.
 
 ## Current Release State
 
-As of 2026-07-21:
+As of 2026-08-26:
 
 - npm organization and scope: `bridge-crux` / `@bridge-crux`
 - dedicated npm release team: `bridge-crux:bridgecrux`
@@ -34,6 +34,8 @@ As of 2026-07-21:
 - public-transition audit: repository source, reachable history, and Actions
   artifacts were checked before changing visibility; no credential-shaped values
   or published artifacts were found
+- next prepared candidate: `0.3.0`, a breaking schema-3 release. It is not
+  published until the release operator completes every gate in this document.
 
 The npm organization owns the package names. The dedicated npm team controls
 human access. GitHub Actions publishes through short-lived npm OIDC credentials;
@@ -85,14 +87,14 @@ packages and revoke any obsolete npm automation tokens.
 Start from a clean, current `main` checkout. Read `docs/stability.md`, the changes
 since the previous release, and the current npm versions. Choose one semantic
 version for all six packages; BridgeCrux does not release workspaces at
-independent versions. For 0.2.0, read `CHANGELOG.md` and the migration section in
-`docs/installation.md` before preparing the release.
+independent versions. For 0.3.0, read `CHANGELOG.md` and the schema-3 migration
+section in `docs/installation.md` before preparing the release.
 
 ```bash
 git switch main
 git pull --ff-only
 git status --short
-npm run release:prepare -- 0.2.0
+npm run release:prepare -- 0.3.0
 git diff
 ```
 
@@ -142,7 +144,7 @@ version merely to conceal a partial release.
 Run the exact-version verifier from an npm-authenticated operator checkout:
 
 ```bash
-npm run release:verify-published -- 0.2.0 latest
+npm run release:verify-published -- 0.3.0 latest
 ```
 
 This command verifies all six registry versions and the requested distribution
@@ -169,8 +171,9 @@ fresh directory outside this repository:
 
 ```bash
 npm init -y
-npm install @bridge-crux/kit@0.2.0 @bridge-crux/skills@0.2.0 convex
-npx @bridge-crux/skills@0.2.0 install --target ./.codex/skills --project .
+npm install @bridge-crux/kit@0.3.0 @bridge-crux/skills@0.3.0 convex
+npx @bridge-crux/skills@0.3.0 install --project .
+npx @bridge-crux/skills@0.3.0 doctor --project .
 npx bridgecrux --version
 npx bridgecrux doctor --project .
 npm audit signatures --json --include-attestations
@@ -189,9 +192,9 @@ Create the annotated tag at the exact commit published by the successful
 workflow, then create the GitHub Release:
 
 ```bash
-git tag -a v0.2.0 <release-commit> -m "BridgeCrux 0.2.0"
-git push origin v0.2.0
-gh release create v0.2.0 --repo LycurgusxLycurgus/bridgecrux-system --title "BridgeCrux 0.2.0" --generate-notes --verify-tag
+git tag -a v0.3.0 <release-commit> -m "BridgeCrux 0.3.0"
+git push origin v0.3.0
+gh release create v0.3.0 --repo LycurgusxLycurgus/bridgecrux-system --title "BridgeCrux 0.3.0" --generate-notes --verify-tag
 ```
 
 ## Access Tightening And Recovery

@@ -1,44 +1,137 @@
 {
-  "schemaVersion": 2,
+  "schemaVersion": 3,
   "id": "neutral-conformance",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "locale": "en",
-  "routeRegistry": ["records", "conversation"],
-  "intentRegistry": {
-    "records": ["inspect", "complete"],
-    "conversation": ["unsupported_execution"]
-  },
-  "capabilityGapEligibleRoutes": ["conversation"],
   "conversationWindow": 12,
-  "models": {
-    "router": {
-      "provider": "test",
-      "model": "structured-test",
-      "temperature": 0.2
+  "surfaces": ["test"],
+  "routes": [
+    {
+      "id": "records",
+      "summary": "Inspect or complete durable records.",
+      "intents": [
+        { "id": "inspect", "summary": "Read a resolved persisted record.", "capabilityId": "records.inspect" },
+        { "id": "complete", "summary": "Complete a resolved record from sufficient evidence.", "capabilityId": "records.complete" }
+      ]
     },
-    "tutor": {
-      "provider": "test",
-      "model": "tutor-test"
+    {
+      "id": "conversation",
+      "summary": "Handle onboarding and unsupported execution without impersonating software.",
+      "intents": [
+        { "id": "onboard", "summary": "Introduce the available product capabilities.", "capabilityId": "conversation.onboard", "aliases": ["/", "/start", "/help"] },
+        { "id": "unsupported_execution", "summary": "Explain an explicitly requested unavailable operation.", "capabilityId": "conversation.unsupported_execution", "capabilityGapEligible": true }
+      ]
     }
-  },
-  "execution": {
-    "freeformRouterThinkingLevel": "medium",
-    "routes": {
-      "records/inspect": { "mode": "model", "thinkingLevel": "medium", "toolIds": ["records.inspect"] },
-      "records/complete": { "mode": "hybrid", "thinkingLevel": "high", "toolIds": ["records.complete"] },
-      "conversation/unsupported_execution": { "mode": "model", "thinkingLevel": "medium", "toolIds": [] }
+  ],
+  "capabilities": [
+    {
+      "id": "records.inspect",
+      "title": "Inspect a record",
+      "description": "Resolve and read a persisted record without mutation.",
+      "route": "records",
+      "intent": "inspect",
+      "handlerId": "records-handler",
+      "operationIds": ["records.inspect"],
+      "execution": { "mode": "agentic", "thinkingLevel": "high", "toolIds": ["records.inspect"] },
+      "copySources": ["high_thinking_tutor", "safe_fallback"],
+      "auditEvents": ["record_inspected"],
+      "surfaces": [
+        { "surface": "conversation", "entrypoints": ["natural-language request"], "access": "authenticated", "states": { "loading": "working activity", "success": "record result", "empty": "record not found", "error": "safe read error" } },
+        { "surface": "headless", "entrypoints": ["records.inspect"], "access": "internal", "states": { "loading": "pending operation", "success": "structured record result", "empty": "empty result", "error": "structured read error" } },
+        { "surface": "test", "entrypoints": ["inspect control"], "access": "internal", "states": { "loading": "pending assertion", "success": "rendered result", "empty": "empty fixture", "error": "test error" } }
+      ],
+      "interaction": { "mode": "none" }
+    },
+    {
+      "id": "records.complete",
+      "title": "Complete a record",
+      "description": "Interpret evidence and persist an authorized record completion.",
+      "route": "records",
+      "intent": "complete",
+      "handlerId": "records-handler",
+      "operationIds": ["records.complete"],
+      "execution": { "mode": "hybrid", "thinkingLevel": "high", "toolIds": ["records.complete"] },
+      "copySources": ["high_thinking_tutor", "safe_fallback"],
+      "auditEvents": ["record_completed"],
+      "surfaces": [
+        { "surface": "conversation", "entrypoints": ["evidence statement"], "access": "owner", "states": { "loading": "working activity", "success": "completion acknowledgement", "empty": "missing evidence prompt", "error": "safe mutation error" } },
+        { "surface": "headless", "entrypoints": ["records.complete"], "access": "internal", "states": { "loading": "pending operation", "success": "structured completion result", "empty": "partial assessment", "error": "structured mutation error" } },
+        { "surface": "test", "entrypoints": ["completion form"], "access": "internal", "states": { "loading": "pending assertion", "success": "persisted fixture", "empty": "missing fixture field", "error": "test error" } }
+      ],
+      "interaction": { "mode": "generated_choices", "allowFreeText": true, "minimumOptions": 2, "maximumOptions": 4 }
+    },
+    {
+      "id": "conversation.onboard",
+      "title": "Explain available capabilities",
+      "description": "Provide the same complete first-turn and help introduction.",
+      "route": "conversation",
+      "intent": "onboard",
+      "handlerId": "conversation-handler",
+      "operationIds": [],
+      "execution": { "mode": "deterministic", "toolIds": [] },
+      "deterministicJustification": "The authored onboarding result is fixed after the textual command is routed and has no open-ended interpretation or mutation.",
+      "copySources": ["authored_deterministic", "safe_fallback"],
+      "auditEvents": ["onboarding_rendered"],
+      "surfaces": [
+        { "surface": "conversation", "entrypoints": ["first turn", "/", "/start", "/help"], "access": "public", "states": { "loading": "immediate authored response", "success": "complete introduction", "empty": "complete introduction", "error": "safe introduction fallback" } },
+        { "surface": "headless", "entrypoints": ["conversation.onboard"], "access": "internal", "states": { "loading": "immediate authored response", "success": "structured capability introduction", "empty": "empty capability registry", "error": "structured content error" } },
+        { "surface": "test", "entrypoints": ["help control"], "access": "internal", "states": { "loading": "pending assertion", "success": "rendered introduction", "empty": "empty fixture", "error": "test error" } }
+      ],
+      "interaction": { "mode": "none" }
+    },
+    {
+      "id": "conversation.unsupported_execution",
+      "title": "Handle unavailable execution",
+      "description": "Explain and report a genuine unsupported operation request.",
+      "route": "conversation",
+      "intent": "unsupported_execution",
+      "handlerId": "conversation-handler",
+      "operationIds": [],
+      "execution": { "mode": "agentic", "thinkingLevel": "medium", "toolIds": [] },
+      "copySources": ["conversational_tutor", "safe_fallback"],
+      "auditEvents": ["capability_gap_reported"],
+      "surfaces": [
+        { "surface": "conversation", "entrypoints": ["explicit unsupported request"], "access": "public", "states": { "loading": "working activity", "success": "truthful unavailable response", "empty": "clarifying response", "error": "safe gap fallback" } },
+        { "surface": "headless", "entrypoints": ["conversation.unsupported_execution"], "access": "internal", "states": { "loading": "pending classification", "success": "structured capability gap", "empty": "no gap", "error": "structured report error" } },
+        { "surface": "test", "entrypoints": ["unsupported action"], "access": "internal", "states": { "loading": "pending assertion", "success": "recorded gap", "empty": "no report", "error": "test error" } }
+      ],
+      "interaction": { "mode": "none" }
     }
+  ],
+  "models": {
+    "router": { "provider": "test", "model": "structured-test" },
+    "tutor": { "provider": "test", "model": "tutor-test" }
   },
-  "channels": ["test"],
-  "memory": {
-    "reviewEveryInboundTurns": 30,
-    "reviewAtMilestones": true
+  "routing": { "freeformThinkingLevel": "medium" },
+  "communication": {
+    "availableStyles": ["pragmatic", "casual"],
+    "defaultStyle": "pragmatic",
+    "selection": "user_selectable"
   },
-  "capabilityGaps": {
-    "minimumConfidence": 0.75,
-    "enabled": true
+  "onboarding": {
+    "firstTurnCapabilityId": "conversation.onboard",
+    "commandEntrypoints": ["/", "/start", "/help"],
+    "openControl": true
   },
-  "feedback": {
-    "enabled": false
-  }
+  "channelAffordances": [
+    {
+      "surface": "test",
+      "commands": ["/start", "/help"],
+      "description": "Neutral conformance interface",
+      "menuButton": "open",
+      "audience": "internal"
+    }
+  ],
+  "invariants": [
+    {
+      "id": "capability-surface-parity",
+      "kind": "surface_completeness",
+      "description": "Every public capability has conversation, headless, and declared test-surface coverage.",
+      "verificationIds": ["all-route-all-surface-simulation"],
+      "capabilityIds": ["records.inspect", "records.complete", "conversation.onboard", "conversation.unsupported_execution"]
+    }
+  ],
+  "memory": { "reviewEveryInboundTurns": 30, "reviewAtMilestones": true },
+  "capabilityGaps": { "minimumConfidence": 0.75, "enabled": true },
+  "feedback": { "enabled": false }
 }

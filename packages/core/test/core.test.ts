@@ -22,9 +22,14 @@ import {
   VALIDATION_CODES,
   auditHandlerBindings,
   auditAllRouteSimulation,
+  auditCapabilityCatalog,
+  compactRoutingCatalog,
+  evaluateRoutingComplexity,
+  validateInteractionPlan,
   resolveTurnThinkingLevel,
   type CruxOperation,
   type CruxStateBundle,
+  type CapabilityContract,
   type HandlerBinding,
   type HandlerInput,
   type MemoryOperation,
@@ -37,12 +42,16 @@ import {
 } from "../src/index.js";
 
 const registry: RouteRegistryDefinition = {
+  surfaces: ["test"],
   routes: [
     {
       id: "records",
+      summary: "Inspect or complete records",
       intents: [
         {
           id: "inspect",
+          summary: "Read a record",
+          capabilityId: "records.inspect",
           speechActs: ["question", "execution"],
           temporalStances: ["past", "present", "unclear"],
           mutationClasses: [],
@@ -51,6 +60,8 @@ const registry: RouteRegistryDefinition = {
         },
         {
           id: "complete",
+          summary: "Complete a record",
+          capabilityId: "records.complete",
           speechActs: ["announcement", "execution"],
           temporalStances: ["past", "present"],
           mutationClasses: ["complete_record"],
@@ -62,9 +73,12 @@ const registry: RouteRegistryDefinition = {
     },
     {
       id: "conversation",
+      summary: "Handle unsupported execution",
       intents: [
         {
           id: "unsupported_execution",
+          summary: "Report an unavailable operation",
+          capabilityId: "conversation.unsupported_execution",
           speechActs: ["execution"],
           temporalStances: ["present", "unclear"],
           mutationClasses: [],
@@ -75,21 +89,28 @@ const registry: RouteRegistryDefinition = {
       ],
     },
   ],
+  capabilities: [
+    capability({ id: "records.inspect", route: "records", intent: "inspect", handlerId: "records-controller", operationIds: ["records.read"], executionPolicy: { mode: "agentic", thinkingLevel: "medium", toolIds: [] }, copySources: ["conversational_tutor"], auditEvents: ["records.inspected"] }),
+    capability({ id: "records.complete", route: "records", intent: "complete", handlerId: "records-controller", operationIds: ["records.complete"], executionPolicy: { mode: "hybrid", thinkingLevel: "high", toolIds: ["records.complete"] }, copySources: ["high_thinking_tutor"], auditEvents: ["records.completed"], interaction: { mode: "generated_choices", allowFreeText: true, minimumOptions: 2, maximumOptions: 4 } }),
+    capability({ id: "conversation.unsupported_execution", route: "conversation", intent: "unsupported_execution", handlerId: "gap-controller", operationIds: [], executionPolicy: { mode: "agentic", thinkingLevel: "medium", toolIds: [] }, copySources: ["safe_fallback"], auditEvents: ["capability_gap.created"] }),
+  ],
 };
 
 const bindings: HandlerBinding[] = [
   {
+    capabilityId: "records.inspect",
     route: "records",
     intent: "inspect",
     handlerId: "records-controller",
     allowedMutationClasses: [],
     requiredState: ["records"],
     operationIds: ["records.read"],
-    executionPolicy: { mode: "model", thinkingLevel: "medium", toolIds: ["records.read"] },
+    executionPolicy: { mode: "agentic", thinkingLevel: "medium", toolIds: [] },
     copySources: ["conversational_tutor"],
     auditEvents: ["records.inspected"],
   },
   {
+    capabilityId: "records.complete",
     route: "records",
     intent: "complete",
     handlerId: "records-controller",
@@ -101,13 +122,14 @@ const bindings: HandlerBinding[] = [
     auditEvents: ["records.completed"],
   },
   {
+    capabilityId: "conversation.unsupported_execution",
     route: "conversation",
     intent: "unsupported_execution",
     handlerId: "gap-controller",
     allowedMutationClasses: [],
     requiredState: [],
     operationIds: [],
-    executionPolicy: { mode: "model", thinkingLevel: "medium", toolIds: [] },
+    executionPolicy: { mode: "agentic", thinkingLevel: "medium", toolIds: [] },
     copySources: ["safe_fallback"],
     auditEvents: ["capability_gap.created"],
   },
@@ -115,7 +137,7 @@ const bindings: HandlerBinding[] = [
 
 describe("route and binding registries", () => {
   it("rejects duplicate routes and reports incomplete task paths", () => {
-    expect(() => new RouteIntentRegistry({ routes: [registry.routes[0]!, registry.routes[0]!] })).toThrow(/Duplicate/);
+    expect(() => new RouteIntentRegistry({ ...registry, routes: [registry.routes[0]!, registry.routes[0]!] })).toThrow(/Duplicate/);
     const routeRegistry = new RouteIntentRegistry(registry);
     const bindingRegistry = new HandlerBindingRegistry(bindings.slice(0, 2));
     const issues = auditHandlerBindings(routeRegistry, bindingRegistry, ["records.read", "records.complete", "internal.only"]);
@@ -129,14 +151,55 @@ describe("route and binding registries", () => {
 
   it("audits one complete simulation row for every declared route and intent", () => {
     const observations: RouteSimulationObservation[] = [
-      { pathId: "records/inspect", route: "records", intent: "inspect", executionMode: "model" as const, thinkingLevel: "medium" as const, modelCallCount: 2, activeProcessTurn: false, structuredInput: "none" as const, turnLeaseStatus: "acquired" as const, toolIds: ["records.read"], operationIds: ["records.read"], requiredOperationId: "records.read", persisted: true, copySource: "conversational_tutor", activityStatus: "started" as const, delivered: true, audited: true },
-      { pathId: "records/complete", route: "records", intent: "complete", executionMode: "hybrid" as const, thinkingLevel: "high" as const, modelCallCount: 3, activeProcessTurn: false, structuredInput: "none" as const, turnLeaseStatus: "acquired" as const, toolIds: ["records.complete"], operationIds: ["records.complete"], requiredOperationId: "records.complete", persisted: true, copySource: "high_thinking_tutor", activityStatus: "started" as const, delivered: true, audited: true },
-      { pathId: "conversation/unsupported_execution", route: "conversation", intent: "unsupported_execution", executionMode: "model" as const, thinkingLevel: "medium" as const, modelCallCount: 2, activeProcessTurn: false, structuredInput: "none" as const, turnLeaseStatus: "acquired" as const, toolIds: [], operationIds: [], deliberateNoop: true, persisted: true, copySource: "safe_fallback", activityStatus: "started" as const, delivered: true, audited: true },
+      { pathId: "records/inspect", capabilityId: "records.inspect", route: "records", intent: "inspect", executionMode: "agentic" as const, thinkingLevel: "medium" as const, modelCallCount: 2, activeProcessTurn: false, structuredInput: "none" as const, turnLeaseStatus: "acquired" as const, toolIds: [], operationIds: ["records.read"], requiredOperationId: "records.read", persisted: true, copySource: "conversational_tutor", activityStatus: "started" as const, delivered: true, audited: true, surfaceResults: parity() },
+      { pathId: "records/complete", capabilityId: "records.complete", route: "records", intent: "complete", executionMode: "hybrid" as const, thinkingLevel: "high" as const, modelCallCount: 3, activeProcessTurn: false, structuredInput: "none" as const, turnLeaseStatus: "acquired" as const, toolIds: ["records.complete"], operationIds: ["records.complete"], requiredOperationId: "records.complete", persisted: true, copySource: "high_thinking_tutor", activityStatus: "started" as const, delivered: true, audited: true, surfaceResults: parity() },
+      { pathId: "conversation/unsupported_execution", capabilityId: "conversation.unsupported_execution", route: "conversation", intent: "unsupported_execution", executionMode: "agentic" as const, thinkingLevel: "medium" as const, modelCallCount: 2, activeProcessTurn: false, structuredInput: "none" as const, turnLeaseStatus: "acquired" as const, toolIds: [], operationIds: [], deliberateNoop: true, persisted: true, copySource: "safe_fallback", activityStatus: "started" as const, delivered: true, audited: true, surfaceResults: parity() },
     ];
     expect(auditAllRouteSimulation({ registry, bindings, observations })).toEqual([]);
     expect(auditAllRouteSimulation({ registry, bindings, observations: observations.slice(1) })).toContain(
       "records/inspect requires exactly one all-route simulation row; found 0",
     );
+  });
+
+  it("uses one capability graph for route bindings, surface parity, and generated hybrid choices", () => {
+    expect(auditCapabilityCatalog(registry, ["records.read", "records.complete"])).toEqual([]);
+    expect(HandlerBindingRegistry.fromDefinition(registry).resolve("records", "complete")).toMatchObject({
+      capabilityId: "records.complete",
+      handlerId: "records-controller",
+      executionPolicy: { mode: "hybrid", thinkingLevel: "high" },
+    });
+    expect(validateInteractionPlan({
+      capabilityId: "records.complete",
+      route: "records",
+      intent: "complete",
+      prompt: "Which evidence applies?",
+      field: "evidenceKind",
+      options: [
+        { id: "observed", label: "Observed result", value: "observed" },
+        { id: "documented", label: "Documented result", value: "documented" },
+      ],
+      expiresAt: Date.now() + 60_000,
+    }, registry)).toMatchObject({ ok: true, control: { kind: "generated_clarification", allowFreeText: true } });
+    const catalog = compactRoutingCatalog(registry);
+    expect(catalog.routes[0]).toMatchObject({ id: "records", intents: [{ id: "inspect" }, { id: "complete" }] });
+    expect(JSON.stringify(catalog)).not.toContain("handlerId");
+    expect(JSON.stringify(catalog)).not.toContain("operationIds");
+  });
+
+  it("keeps medium routing unless the same required corpus proves high is necessary", () => {
+    const cases = [{ id: "composite", message: "Inspect and complete the second record", expectedRoute: "records", expectedIntent: "complete", required: true }];
+    expect(evaluateRoutingComplexity({
+      cases,
+      observations: [
+        { caseId: "composite", thinkingLevel: "medium", run: 1, route: "conversation", intent: "unsupported_execution" },
+        { caseId: "composite", thinkingLevel: "high", run: 1, route: "records", intent: "complete" },
+        { caseId: "composite", thinkingLevel: "high", run: 2, route: "records", intent: "complete" },
+      ],
+    })).toMatchObject({ status: "passed", recommendation: "high" });
+    expect(evaluateRoutingComplexity({
+      cases,
+      observations: [{ caseId: "composite", thinkingLevel: "medium", run: 1, route: "records", intent: "complete" }],
+    })).toMatchObject({ status: "passed", recommendation: "medium" });
   });
 });
 
@@ -326,9 +389,11 @@ describe("process, memory, and copy protection", () => {
             mode: "closed_choice",
             control: {
               id: "one",
+              kind: "deterministic_process",
               field: "answer",
               prompt: "Choose",
               options: [{ id: "yes", label: "Yes", value: "yes" }, { id: "no", label: "No", value: "no" }],
+              allowFreeText: false,
             },
           },
           executionPolicy: { mode: "deterministic", toolIds: [] },
@@ -343,9 +408,11 @@ describe("process, memory, and copy protection", () => {
             mode: "closed_choice",
             control: {
               id: "two",
+              kind: "deterministic_process",
               field: "answer",
               prompt: "Choose",
               options: [{ id: "done", label: "Done", value: "done" }, { id: "later", label: "Later", value: "later" }],
+              allowFreeText: false,
             },
           },
           executionPolicy: { mode: "deterministic", toolIds: [] },
@@ -422,9 +489,11 @@ describe("process, memory, and copy protection", () => {
     const control = await store.issue({
       control: {
         id: "answer",
+        kind: "deterministic_process",
         field: "answer",
         prompt: "Choose",
         options: [{ id: "yes", label: "Yes", value: true }, { id: "no", label: "No", value: false }],
+        allowFreeText: false,
       },
       userId: "u",
       sessionId: "s",
@@ -670,6 +739,7 @@ function processInput(extracted: Record<string, unknown>): ProcessTurnInput {
     state: state(),
     binding: bindings[1]!,
     decision: {
+      capabilityId: "records.complete",
       ...raw({
         route: "records",
         intent: "complete",
@@ -691,4 +761,39 @@ function processInput(extracted: Record<string, unknown>): ProcessTurnInput {
     ...handlerInput,
     process: { processId: "process", version: "1", runId: "run", activeStepId: "one", state: {} },
   };
+}
+
+function capability(
+  input: Omit<CapabilityContract, "title" | "description" | "surfaces" | "interaction"> & {
+    interaction?: CapabilityContract["interaction"];
+  },
+): CapabilityContract {
+  return {
+    title: input.id,
+    description: `Capability ${input.id}`,
+    surfaces: [
+      surface("conversation", ["natural language"], "authenticated"),
+      surface("headless", [input.id], "internal"),
+      surface("test", [input.id], "internal"),
+    ],
+    interaction: input.interaction ?? { mode: "none" },
+    ...input,
+  };
+}
+
+function surface(
+  surface: string,
+  entrypoints: string[],
+  access: CapabilityContract["surfaces"][number]["access"],
+): CapabilityContract["surfaces"][number] {
+  return {
+    surface,
+    entrypoints,
+    access,
+    states: { loading: "working", success: "result", empty: "empty result", error: "safe error" },
+  };
+}
+
+function parity(): Record<string, boolean> {
+  return { conversation: true, headless: true, test: true };
 }

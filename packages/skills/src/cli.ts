@@ -5,8 +5,10 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import {
   installBridgeCruxSkills,
+  doctorBridgeCruxSkills,
   type InstructionFileMode,
   uninstallBridgeCruxSkills,
+  updateBridgeCruxSkills,
 } from "./index.js";
 
 export async function runSkillsCli(argv = process.argv.slice(2)): Promise<number> {
@@ -22,7 +24,7 @@ export async function runSkillsCli(argv = process.argv.slice(2)): Promise<number
     return 0;
   }
   const command = parsed.positionals[0];
-  if (command !== "install" && command !== "uninstall") {
+  if (command !== "install" && command !== "update" && command !== "uninstall" && command !== "doctor") {
     process.stderr.write(usage());
     return 2;
   }
@@ -31,14 +33,29 @@ export async function runSkillsCli(argv = process.argv.slice(2)): Promise<number
     process.stderr.write("--instruction-files must be auto, agents, claude, both, or none\n");
     return 2;
   }
+  const project = resolve(parsed.values.project ?? process.cwd());
+  if (parsed.values.global && parsed.values.target) {
+    process.stderr.write("--global and --target cannot be combined\n");
+    return 2;
+  }
   const options = {
-    target: resolve(parsed.values.target ?? defaultTarget()),
-    project: resolve(parsed.values.project ?? process.cwd()),
+    target: resolve(parsed.values.target ?? defaultTarget(project, parsed.values.global ?? false)),
+    project,
     instructionFiles,
     dryRun: parsed.values["dry-run"] ?? false,
+    force: parsed.values.force ?? false,
   };
   try {
-    const result = command === "install" ? await installBridgeCruxSkills(options) : await uninstallBridgeCruxSkills(options);
+    if (command === "doctor") {
+      const result = await doctorBridgeCruxSkills(options);
+      process.stdout.write(`${JSON.stringify(result, null, parsed.values.json ? 2 : 0)}\n`);
+      return result.ok ? 0 : 1;
+    }
+    const result = command === "install"
+      ? await installBridgeCruxSkills(options)
+      : command === "update"
+        ? await updateBridgeCruxSkills(options)
+        : await uninstallBridgeCruxSkills(options);
     process.stdout.write(`${JSON.stringify(result, null, parsed.values.json ? 2 : 0)}\n`);
     return 0;
   } catch (error) {
@@ -57,13 +74,16 @@ function parseCliArgs(argv: string[]) {
       project: { type: "string" },
       "instruction-files": { type: "string" },
       "dry-run": { type: "boolean", default: false },
+      global: { type: "boolean", default: false },
+      force: { type: "boolean", default: false },
       json: { type: "boolean", default: false },
       help: { type: "boolean", short: "h", default: false },
     },
   });
 }
 
-function defaultTarget(): string {
+function defaultTarget(project: string, global: boolean): string {
+  if (!global) return join(project, ".codex", "skills");
   const codexHome = process.env.CODEX_HOME ?? join(homedir(), ".codex");
   return join(codexHome, "skills");
 }
@@ -75,8 +95,10 @@ function isInstructionMode(value: string): value is InstructionFileMode {
 function usage(): string {
   return [
     "Usage:",
-    "  bridgecrux-skills install [--target <skills-root>] [--project <app-root>] [--instruction-files auto|agents|claude|both|none] [--dry-run]",
-    "  bridgecrux-skills uninstall [--target <skills-root>] [--project <app-root>] [--instruction-files auto|agents|claude|both|none] [--dry-run]",
+    "  bridgecrux-skills install [--project <app-root>] [--target <skills-root>|--global] [--instruction-files auto|agents|claude|both|none] [--dry-run] [--force]",
+    "  bridgecrux-skills update [--project <app-root>] [--target <skills-root>|--global] [--instruction-files auto|agents|claude|both|none] [--dry-run] [--force]",
+    "  bridgecrux-skills uninstall [--project <app-root>] [--target <skills-root>|--global] [--instruction-files auto|agents|claude|both|none] [--dry-run] [--force]",
+    "  bridgecrux-skills doctor [--project <app-root>] [--target <skills-root>|--global] [--json]",
     "",
   ].join("\n");
 }
